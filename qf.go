@@ -26,7 +26,7 @@ func (qf *QF) Entries() (count uint) {
 }
 
 func (qf *QF) countEntries() (count uint) {
-	for i := uint64(0); uint(i) < qf.remainders.size(); i++ {
+	for i := uint(0); i < qf.remainders.len(); i++ {
 		if !qf.read(i).empty() {
 			count++
 		}
@@ -37,7 +37,7 @@ func (qf *QF) countEntries() (count uint) {
 func (qf *QF) DebugDump() {
 	fmt.Printf("\n  bucket  O C S remainder->\n")
 	skipped := 0
-	qf.remainders.each(func(i uint64, r uint64) {
+	for i := uint(0); i < qf.remainders.len(); i++ {
 		o, c, s := 0, 0, 0
 		md := qf.read(i)
 		if md.occupied {
@@ -56,9 +56,10 @@ func (qf *QF) DebugDump() {
 				fmt.Printf("          ...\n")
 				skipped = 0
 			}
+			r := qf.remainders.get(i)
 			fmt.Printf("%8d  %d %d %d %x\n", i, o, c, s, r)
 		}
-	})
+	}
 	if skipped > 0 {
 		fmt.Printf("          ...\n")
 	}
@@ -69,7 +70,7 @@ func (qf *QF) eachHashValue(cb func(uint64)) {
 	// a stack of q values
 	stack := []uint64{}
 	// let's start from an unshifted value
-	start := uint64(0)
+	start := uint(0)
 	for qf.read(start).shifted {
 		qf.right(&start)
 	}
@@ -81,7 +82,7 @@ func (qf *QF) eachHashValue(cb func(uint64)) {
 			stack = stack[1:]
 		}
 		if md.occupied {
-			stack = append(stack, i)
+			stack = append(stack, uint64(i))
 		}
 		if len(stack) > 0 {
 			r := qf.remainders.get(i)
@@ -168,7 +169,7 @@ func (md metadata) empty() bool {
 	return !md.occupied && !md.continuation && !md.shifted
 }
 
-func (qf *QF) read(slot uint64) metadata {
+func (qf *QF) read(slot uint) metadata {
 	return metadata{
 		occupied:     qf.occupied.Test(uint(slot)),
 		continuation: qf.continuation.Test(uint(slot)),
@@ -183,9 +184,9 @@ func (qf *QF) CheckConsistency() error {
 
 	// now let's ensure that for every set occupied bit there is a
 	// non-zero length run
-	usage := map[uint64]uint64{}
+	usage := map[uint]uint{}
 
-	for i := uint64(0); i < uint64(qf.remainders.size()); i++ {
+	for i := uint(0); i < qf.remainders.len(); i++ {
 		md := qf.read(i)
 		if !md.occupied {
 			continue
@@ -242,7 +243,7 @@ func (qf *QF) Insert(v []byte, count uint64) {
 }
 
 func (qf *QF) insertByHash(dq, dr, count uint64) {
-	md := qf.read(dq)
+	md := qf.read(uint(dq))
 
 	// if the occupied bit is set for this dq, then we are
 	// extending an existing run
@@ -254,12 +255,12 @@ func (qf *QF) insertByHash(dq, dr, count uint64) {
 	// easy case!
 	if md.empty() {
 		qf.entries++
-		qf.remainders.set(dq, dr)
+		qf.remainders.set(uint(dq), dr)
 		return
 	}
 
 	// ok, let's find the start
-	runStart := qf.findStart(dq)
+	runStart := qf.findStart(uint(dq))
 
 	// now let's find the spot within the run
 	slot := runStart
@@ -286,7 +287,7 @@ func (qf *QF) insertByHash(dq, dr, count uint64) {
 	// we are writing remainder <dr> into <slot>
 
 	// ensure the continuation bit is set correctly
-	shifted := slot != dq
+	shifted := (slot != uint(dq))
 	md.continuation = slot != runStart
 
 	for {
@@ -306,21 +307,21 @@ func (qf *QF) insertByHash(dq, dr, count uint64) {
 	}
 }
 
-func (qf *QF) right(i *uint64) {
+func (qf *QF) right(i *uint) {
 	*i++
-	if *i >= uint64(qf.remainders.size()) {
+	if *i >= qf.remainders.len() {
 		*i = 0
 	}
 }
 
-func (qf *QF) left(i *uint64) {
+func (qf *QF) left(i *uint) {
 	if *i == 0 {
-		*i += uint64(qf.remainders.size())
+		*i += qf.remainders.len()
 	}
 	*i--
 }
 
-func (qf *QF) findStart(dq uint64) uint64 {
+func (qf *QF) findStart(dq uint) uint {
 	// scan left to figure out how much to skip
 	runs, complete := 1, 0
 	for i := dq; true; qf.left(&i) {
@@ -360,7 +361,7 @@ func (qf *QF) lookupByHash(dq, dr uint64) (bool, uint64) {
 	if !qf.occupied.Test(uint(dq)) {
 		return false, 0
 	}
-	slot := qf.findStart(dq)
+	slot := qf.findStart(uint(dq))
 	for {
 		sv := qf.remainders.get(slot)
 		if sv == dr {
