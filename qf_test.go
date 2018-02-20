@@ -296,6 +296,18 @@ func TestBasic(t *testing.T) {
 	}
 }
 
+// if we don't explicitly size the qf, it should grow on demand
+func TestDoubling(t *testing.T) {
+	qf := New()
+	for _, s := range testStrings {
+		qf.InsertString(s, 0)
+		assert.True(t, qf.ContainsString(s), "%q missing after insertion", s)
+	}
+	for _, s := range testStrings {
+		assert.True(t, qf.ContainsString(s), "%q missing after construction", s)
+	}
+}
+
 func TestCheckHashes(t *testing.T) {
 	c := DetermineSize(uint64(len(testStrings)), 4)
 	qf := NewWithConfig(c)

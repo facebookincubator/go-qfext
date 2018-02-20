@@ -68,7 +68,14 @@ func (qf *QF) DebugDump() {
 func (qf *QF) eachHashValue(cb func(uint64)) {
 	// a stack of q values
 	stack := []uint64{}
-	qf.remainders.each(func(i uint64, r uint64) {
+	// let's start from an unshifted value
+	start := uint64(0)
+	for qf.read(start).shifted {
+		qf.right(&start)
+	}
+	end := start
+	qf.left(&end)
+	for i := start; true; qf.right(&i) {
 		md := qf.read(i)
 		if !md.continuation && len(stack) > 0 {
 			stack = stack[1:]
@@ -77,9 +84,13 @@ func (qf *QF) eachHashValue(cb func(uint64)) {
 			stack = append(stack, i)
 		}
 		if len(stack) > 0 {
-			cb((stack[0] << (64 - qf.qBits)) | r)
+			r := qf.remainders.get(i)
+			cb((stack[0] << (64 - qf.qBits)) | (r & qf.rMask))
 		}
-	})
+		if i == end {
+			break
+		}
+	}
 }
 
 func DetermineSize(numberOfEntries uint64, bitsOfStoragePerEntry uint8) Config {
@@ -117,6 +128,15 @@ func (c *Config) Explain() {
 	fmt.Printf("%d bits needed for quotient (%d buckets)\n", c.QBits, c.BucketCount())
 	fmt.Printf("%0.2f%% loading expected\n", c.ExpectedLoading())
 	fmt.Printf("%d bytes required\n", c.BytesRequired())
+}
+
+const DefaultQFBits = 4
+
+func New() *QF {
+	return NewWithConfig(Config{
+		QBits: DefaultQFBits,
+		BitsOfStoragePerEntry: 0, // XXX
+	})
 }
 
 func NewWithConfig(c Config) *QF {
@@ -198,9 +218,30 @@ func (qf *QF) InsertString(s string, count uint64) {
 	qf.Insert(*(*[]byte)(unsafe.Pointer(&s)), count)
 }
 
-func (qf *QF) Insert(v []byte, count uint64) {
-	dq, dr := qf.hash(v)
+func (qf *QF) double() {
+	cpy := NewWithConfig(Config{
+		QBits: qf.qBits + 1,
+		BitsOfStoragePerEntry: 0, // XXX
+	})
+	qf.eachHashValue(func(hv uint64) {
+		dq := hv >> (64 - cpy.qBits)
+		dr := hv & cpy.rMask
+		cpy.insertByHash(dq, dr, 0) // XXX count
+	})
 
+	// shallow copy in
+	*qf = *cpy
+}
+
+func (qf *QF) Insert(v []byte, count uint64) {
+	if qf.maxEntries <= qf.entries {
+		qf.double()
+	}
+	dq, dr := qf.hash(v)
+	qf.insertByHash(dq, dr, count)
+}
+
+func (qf *QF) insertByHash(dq, dr, count uint64) {
 	md := qf.read(dq)
 
 	// if the occupied bit is set for this dq, then we are
@@ -246,7 +287,7 @@ func (qf *QF) Insert(v []byte, count uint64) {
 
 	// ensure the continuation bit is set correctly
 	shifted := slot != dq
-	md.continuation = slot > runStart
+	md.continuation = slot != runStart
 
 	for {
 		dr = qf.remainders.set(slot, dr)
@@ -312,7 +353,10 @@ func (qf *QF) ContainsString(s string) bool {
 }
 
 func (qf *QF) Lookup(v []byte) (bool, uint64) {
-	dq, dr := qf.hash(v)
+	return qf.lookupByHash(qf.hash(v))
+}
+
+func (qf *QF) lookupByHash(dq, dr uint64) (bool, uint64) {
 	if !qf.occupied.Test(uint(dq)) {
 		return false, 0
 	}
