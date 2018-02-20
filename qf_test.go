@@ -1,7 +1,6 @@
-package cqf
+package qf
 
 import (
-	"fmt"
 	"hash/fnv"
 	"testing"
 
@@ -286,72 +285,53 @@ var testStrings []string = []string{
 }
 
 func TestBasic(t *testing.T) {
-	return
 	c := DetermineSize(uint64(len(testStrings)), 4)
-	cqf := New(c)
-
+	qf := NewWithConfig(c)
 	for _, s := range testStrings {
-		cqf.InsertString(s, 0)
-		assert.True(t, cqf.ContainsString(s), "%q missing", s)
-
-		q, r := cqf.hash([]byte(s))
-		fmt.Printf("\n\nAfter adding %q: %3d|%x\n", s, q, r)
-		cqf.DebugDump()
+		qf.InsertString(s, 0)
+		assert.True(t, qf.ContainsString(s), "%q missing", s)
 	}
 	for _, s := range testStrings {
-		if !assert.True(t, cqf.ContainsString(s)) {
-			fmt.Printf("%q missing\n", s)
-		}
+		assert.True(t, qf.ContainsString(s))
 	}
-	cqf.DebugDump()
 }
 
 func TestCheckHashes(t *testing.T) {
 	c := DetermineSize(uint64(len(testStrings)), 4)
-	cqf := New(c)
+	qf := NewWithConfig(c)
 	expected := map[uint64]struct{}{}
 	for _, s := range testStrings {
-		cqf.DebugDump()
-		cqf.InsertString(s, 0)
-		if !assert.NoError(t, cqf.CheckConsistency()) {
-			cqf.DebugDump()
-			return
-		}
+		qf.InsertString(s, 0)
+		assert.NoError(t, qf.CheckConsistency())
 		hash := fnv.New64()
 		hash.Write([]byte(s))
 		hv := hash.Sum64()
 		expected[hv] = struct{}{}
 	}
-	assert.NoError(t, cqf.CheckConsistency())
+	assert.NoError(t, qf.CheckConsistency())
 	got := map[uint64]struct{}{}
-	cqf.eachHashValue(func(hv uint64) {
+	qf.eachHashValue(func(hv uint64) {
 		got[hv] = struct{}{}
 	})
 
 	for hv, _ := range expected {
 		_, found := got[hv]
-		if !assert.True(t, found, "missing hash value %x", hv) {
-			fmt.Printf("missing %x\n", hv)
-		}
+		assert.True(t, found, "missing hash value %x", hv)
 	}
 
 	for hv, _ := range got {
 		_, found := expected[hv]
-		if !assert.True(t, found, "unexpected hash value %x", hv) {
-			fmt.Printf("unexpected %x\n", hv)
-		}
+		assert.True(t, found, "unexpected hash value %x", hv)
 	}
 	assert.Equal(t, len(expected), len(got))
-	assert.Equal(t, len(expected), int(cqf.Entries()))
-
-	cqf.DebugDump()
+	assert.Equal(t, len(expected), int(qf.Entries()))
 }
 
 func BenchmarkQuotientFilterLookup(b *testing.B) {
 	c := DetermineSize(uint64(len(testStrings)), 4)
-	cqf := New(c)
+	qf := NewWithConfig(c)
 	for _, s := range testStrings {
-		cqf.InsertString(s, 0)
+		qf.InsertString(s, 0)
 	}
 
 	numStrings := len(testStrings)
@@ -359,7 +339,7 @@ func BenchmarkQuotientFilterLookup(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		cqf.ContainsString(testStrings[n%numStrings])
+		qf.ContainsString(testStrings[n%numStrings])
 	}
 }
 

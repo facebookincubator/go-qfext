@@ -1,4 +1,4 @@
-package cqf
+package qf
 
 type packed struct {
 	bits  uint8
