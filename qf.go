@@ -10,13 +10,13 @@ import (
 )
 
 type QF struct {
-	entries    uint
-	metadata   *bitset.BitSet
-	remainders *packed
-	storage    []uint8
-	qBits      uint
-	rMask      uint64
-	maxEntries uint
+	entries      uint
+	metadata     *bitset.BitSet
+	remainders   *packed
+	storage      *packed
+	rBits, qBits uint
+	rMask        uint64
+	maxEntries   uint
 }
 
 func (qf *QF) Entries() (count uint) {
@@ -55,7 +55,11 @@ func (qf *QF) DebugDump() {
 				skipped = 0
 			}
 			r := qf.remainders.get(i)
-			fmt.Printf("%8d  %d %d %d %x\n", i, o, c, s, r)
+			v := uint64(0)
+			if qf.storage != nil {
+				v = qf.storage.get(i)
+			}
+			fmt.Printf("%8d  %d %d %d %x (%d)\n", i, o, c, s, r, v)
 		}
 	}
 	if skipped > 0 {
@@ -64,7 +68,7 @@ func (qf *QF) DebugDump() {
 }
 
 // iterate the qf and call the callback once for each hash value present
-func (qf *QF) eachHashValue(cb func(uint64)) {
+func (qf *QF) eachHashValue(cb func(uint64, uint)) {
 	// a stack of q values
 	stack := []uint64{}
 	// let's start from an unshifted value
@@ -84,7 +88,7 @@ func (qf *QF) eachHashValue(cb func(uint64)) {
 		}
 		if len(stack) > 0 {
 			r := qf.remainders.get(i)
-			cb((stack[0] << (64 - qf.qBits)) | (r & qf.rMask))
+			cb((stack[0]<<qf.rBits)|(r&qf.rMask), i)
 		}
 		if i == end {
 			break
@@ -115,7 +119,7 @@ func (c *Config) ExpectedLoading() float64 {
 }
 
 func (c *Config) BytesRequired() uint {
-	bitsPerEntry := uint(64) + 3 + 8
+	bitsPerEntry := (64 - uint(c.QBits)) + 3 + uint(c.BitsOfStoragePerEntry)
 	return c.BucketCount() * bitsPerEntry / 8
 }
 
@@ -124,7 +128,11 @@ func (c *Config) BucketCount() uint {
 }
 
 func (c *Config) Explain() {
+	fmt.Printf("For %d expected entities...\n", c.ExpectedNumberOfEntries)
 	fmt.Printf("%d bits needed for quotient (%d buckets)\n", c.QBits, c.BucketCount())
+	fmt.Printf("%d bits needed per bucket for remainder\n", 64-c.QBits)
+	fmt.Printf("3 bits metadata per bucket\n")
+	fmt.Printf("%d bits external storage\n", c.BitsOfStoragePerEntry)
 	fmt.Printf("%0.2f%% loading expected\n", c.ExpectedLoading())
 	fmt.Printf("%d bytes required\n", c.BytesRequired())
 }
@@ -134,7 +142,7 @@ const DefaultQFBits = 4
 func New() *QF {
 	return NewWithConfig(Config{
 		QBits: DefaultQFBits,
-		BitsOfStoragePerEntry: 0, // XXX
+		BitsOfStoragePerEntry: 0,
 	})
 }
 
@@ -143,9 +151,12 @@ func NewWithConfig(c Config) *QF {
 	n := c.BucketCount()
 	qf.metadata = bitset.New(n * 3)
 	qf.remainders = newPacked(uint8(64-c.QBits), n)
-	qf.storage = make([]uint8, n)
+	if c.BitsOfStoragePerEntry > 0 {
+		qf.storage = newPacked(uint8(c.BitsOfStoragePerEntry), n)
+	}
 	qf.qBits = c.QBits
-	for i := uint(0); i < (64 - c.QBits); i++ {
+	qf.rBits = (64 - c.QBits)
+	for i := uint(0); i < qf.rBits; i++ {
 		qf.rMask |= 1 << i
 	}
 	qf.maxEntries = uint(math.Ceil(float64(n) * 0.65))
@@ -243,52 +254,57 @@ func (qf *QF) CheckConsistency() error {
 	return nil
 }
 
-func (qf *QF) InsertString(s string, count uint64) {
-	qf.Insert(*(*[]byte)(unsafe.Pointer(&s)), count)
+func (qf *QF) InsertString(s string, value uint64) {
+	qf.Insert(*(*[]byte)(unsafe.Pointer(&s)), value)
 }
 
 func (qf *QF) double() {
+	storageBits := uint8(0)
+	if qf.storage != nil {
+		storageBits = qf.storage.bits
+	}
 	cpy := NewWithConfig(Config{
 		QBits: qf.qBits + 1,
-		BitsOfStoragePerEntry: 0, // XXX
+		BitsOfStoragePerEntry: storageBits,
 	})
-	qf.eachHashValue(func(hv uint64) {
-		dq := hv >> (64 - cpy.qBits)
+	qf.eachHashValue(func(hv uint64, slot uint) {
+		dq := hv >> cpy.rBits
 		dr := hv & cpy.rMask
-		cpy.insertByHash(dq, dr, 0) // XXX count
+		v := uint64(0)
+		if qf.storage != nil {
+			v = qf.storage.get(slot)
+		}
+		cpy.insertByHash(dq, dr, v) // XXX count
 	})
 
 	// shallow copy in
 	*qf = *cpy
 }
 
-func (qf *QF) Insert(v []byte, count uint64) {
+func (qf *QF) Insert(v []byte, value uint64) {
 	if qf.maxEntries <= qf.entries {
 		qf.double()
 	}
 	dq, dr := qf.hash(v)
-	qf.insertByHash(dq, dr, count)
-
-	if e := qf.CheckConsistency(); e != nil {
-		qf.DebugDump()
-		panic(e.Error())
-	}
+	qf.insertByHash(dq, dr, value)
 }
 
-func (qf *QF) insertByHash(dq, dr, count uint64) {
+func (qf *QF) insertByHash(dq, dr, value uint64) {
 	md := qf.read(uint(dq))
 
 	// if the occupied bit is set for this dq, then we are
 	// extending an existing run
 	extendingRun := md.occupied
 
-	//  XXX: we can verify not set when it shouldn't be
 	qf.setOccupied(uint(dq))
 
 	// easy case!
 	if md.empty() {
 		qf.entries++
 		qf.remainders.set(uint(dq), dr)
+		if qf.storage != nil {
+			qf.storage.set(uint(dq), value)
+		}
 		return
 	}
 
@@ -312,7 +328,10 @@ func (qf *QF) insertByHash(dq, dr, count uint64) {
 	}
 
 	if dr == qf.remainders.get(slot) {
-		// duplicate! XXX: count
+		// update value
+		if qf.storage != nil {
+			qf.storage.set(slot, value)
+		}
 		return
 	}
 	qf.entries++
@@ -325,6 +344,9 @@ func (qf *QF) insertByHash(dq, dr, count uint64) {
 
 	for {
 		dr = qf.remainders.set(slot, dr)
+		if qf.storage != nil {
+			value = qf.storage.set(slot, value)
+		}
 		nxt := qf.read(slot)
 		if (slot == runStart) && extendingRun {
 			nxt.continuation = true
@@ -398,7 +420,11 @@ func (qf *QF) lookupByHash(dq, dr uint64) (bool, uint64) {
 	for {
 		sv := qf.remainders.get(slot)
 		if sv == dr {
-			return true, 0 // XXX count
+			value := uint64(0)
+			if qf.storage != nil {
+				value = qf.storage.get(slot)
+			}
+			return true, value
 		}
 		if sv > dr {
 			return false, 0
@@ -427,7 +453,7 @@ func (qf *QF) hash(v []byte) (q, r uint64) {
 		hv *= prime64
 		hv ^= uint64(c)
 	}
-	dq := hv >> (64 - qf.qBits)
+	dq := hv >> qf.rBits
 	dr := hv & qf.rMask
 	return dq, dr
 }

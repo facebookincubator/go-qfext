@@ -2,6 +2,7 @@ package qf
 
 import (
 	"hash/fnv"
+	"math/bits"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -9,7 +10,7 @@ import (
 )
 
 var testStrings []string = []string{
-	"cqf",
+
 	" stores",
 	"!) can",
 	"% loading",
@@ -69,7 +70,6 @@ var testStrings []string = []string{
 	"a",
 	"a",
 	"a",
-
 	"a",
 	"a",
 	"a",
@@ -116,6 +116,7 @@ var testStrings []string = []string{
 	"could",
 	"counts",
 	"couple",
+	"cqf",
 	"cqf",
 	"cqf",
 	"cqf",
@@ -279,12 +280,10 @@ var testStrings []string = []string{
 	"with",
 	"work",
 	"work",
-	/*
-		"’ll",
-		"’m",
-		"’m",
-		"’ve",
-	*/
+	"’ll",
+	"’m",
+	"’m",
+	"’ve",
 }
 
 func TestBasic(t *testing.T) {
@@ -315,6 +314,11 @@ func TestDoubling(t *testing.T) {
 	}
 }
 
+func TestSizeEstimate(t *testing.T) {
+	c := DetermineSize(5500000, 4)
+	assert.Equal(t, int(c.BytesRequired()), 98566144)
+}
+
 func TestCheckHashes(t *testing.T) {
 	c := DetermineSize(uint64(len(testStrings)), 4)
 	qf := NewWithConfig(c)
@@ -329,7 +333,7 @@ func TestCheckHashes(t *testing.T) {
 	}
 	assert.NoError(t, qf.CheckConsistency())
 	got := map[uint64]struct{}{}
-	qf.eachHashValue(func(hv uint64) {
+	qf.eachHashValue(func(hv uint64, _ uint) {
 		got[hv] = struct{}{}
 	})
 
@@ -344,6 +348,36 @@ func TestCheckHashes(t *testing.T) {
 	}
 	assert.Equal(t, len(expected), len(got))
 	assert.Equal(t, len(expected), int(qf.Entries()))
+}
+
+func TestExternalStorage(t *testing.T) {
+	qf := NewWithConfig(Config{
+		QBits: 2,
+		BitsOfStoragePerEntry: uint8(64 - bits.LeadingZeros64(uint64(len(testStrings)))),
+	})
+	qf.InsertString("hi mom", 42)
+	found, val := qf.LookupString("hi mom")
+	assert.True(t, found)
+	assert.Equal(t, val, uint64(42))
+	last := ""
+	for i, s := range testStrings {
+		if s != last {
+			qf.InsertString(s, uint64(i))
+			found, val := qf.LookupString(s)
+			assert.True(t, found)
+			assert.Equal(t, val, uint64(i))
+		}
+		last = s
+	}
+	last = ""
+	for i, s := range testStrings {
+		if s != last {
+			found, val := qf.LookupString(s)
+			assert.True(t, found)
+			assert.Equal(t, val, uint64(i))
+		}
+		last = s
+	}
 }
 
 func BenchmarkQuotientFilterLookup(b *testing.B) {
