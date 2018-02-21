@@ -10,15 +10,13 @@ import (
 )
 
 type QF struct {
-	entries      uint
-	occupied     *bitset.BitSet
-	continuation *bitset.BitSet
-	shifted      *bitset.BitSet
-	remainders   *packed
-	storage      []uint8
-	qBits        uint
-	rMask        uint64
-	maxEntries   uint
+	entries    uint
+	metadata   *bitset.BitSet
+	remainders *packed
+	storage    []uint8
+	qBits      uint
+	rMask      uint64
+	maxEntries uint
 }
 
 func (qf *QF) Entries() (count uint) {
@@ -143,9 +141,7 @@ func New() *QF {
 func NewWithConfig(c Config) *QF {
 	var qf QF
 	n := c.BucketCount()
-	qf.occupied = bitset.New(n)
-	qf.continuation = bitset.New(n)
-	qf.shifted = bitset.New(n)
+	qf.metadata = bitset.New(n * 3)
 	qf.remainders = newPacked(uint8(64-c.QBits), n)
 	qf.storage = make([]uint8, n)
 	qf.qBits = c.QBits
@@ -171,10 +167,42 @@ func (md metadata) empty() bool {
 
 func (qf *QF) read(slot uint) metadata {
 	return metadata{
-		occupied:     qf.occupied.Test(uint(slot)),
-		continuation: qf.continuation.Test(uint(slot)),
-		shifted:      qf.shifted.Test(uint(slot)),
+		occupied:     qf.metadata.Test(slot * 3),
+		continuation: qf.metadata.Test(slot*3 + 1),
+		shifted:      qf.metadata.Test(slot*3 + 2),
 	}
+}
+
+func (qf *QF) occupied(slot uint) bool {
+	return qf.metadata.Test(slot * 3)
+}
+
+func (qf *QF) setOccupied(slot uint) {
+	qf.metadata.Set(slot * 3)
+}
+
+func (qf *QF) continuation(slot uint) bool {
+	return qf.metadata.Test(slot*3 + 1)
+}
+
+func (qf *QF) setContinuation(slot uint) {
+	qf.metadata.Set(slot*3 + 1)
+}
+
+func (qf *QF) setContinuationTo(slot uint, to bool) {
+	qf.metadata.SetTo(slot*3+1, to)
+}
+
+func (qf *QF) shifted(slot uint) bool {
+	return qf.metadata.Test(slot*3 + 2)
+}
+
+func (qf *QF) setShifted(slot uint) {
+	qf.metadata.Set(slot*3 + 2)
+}
+
+func (qf *QF) setShiftedTo(slot uint, to bool) {
+	qf.metadata.SetTo(slot*3+2, to)
 }
 
 func (qf *QF) CheckConsistency() error {
@@ -255,7 +283,7 @@ func (qf *QF) insertByHash(dq, dr, count uint64) {
 	extendingRun := md.occupied
 
 	//  XXX: we can verify not set when it shouldn't be
-	qf.occupied.Set(uint(dq))
+	qf.setOccupied(uint(dq))
 
 	// easy case!
 	if md.empty() {
@@ -301,8 +329,8 @@ func (qf *QF) insertByHash(dq, dr, count uint64) {
 		if (slot == runStart) && extendingRun {
 			nxt.continuation = true
 		}
-		qf.continuation.SetTo(uint(slot), md.continuation)
-		qf.shifted.SetTo(uint(slot), shifted)
+		qf.setContinuationTo(uint(slot), md.continuation)
+		qf.setShiftedTo(uint(slot), shifted)
 		qf.right(&slot)
 		md = nxt
 		if md.empty() {
@@ -330,19 +358,19 @@ func (qf *QF) findStart(dq uint) uint {
 	// scan left to figure out how much to skip
 	runs, complete := 1, 0
 	for i := dq; true; qf.left(&i) {
-		if !qf.continuation.Test(uint(i)) {
+		if !qf.continuation(uint(i)) {
 			complete++
 		}
-		if !qf.shifted.Test(uint(i)) {
+		if !qf.shifted(i) {
 			break
-		} else if qf.occupied.Test(uint(i)) {
+		} else if qf.occupied(i) {
 			runs++
 		}
 	}
 	// scan right to find our run
 	for runs > complete {
 		qf.right(&dq)
-		if !qf.continuation.Test(uint(dq)) {
+		if !qf.continuation(dq) {
 			complete++
 		}
 	}
@@ -363,7 +391,7 @@ func (qf *QF) Lookup(v []byte) (bool, uint64) {
 }
 
 func (qf *QF) lookupByHash(dq, dr uint64) (bool, uint64) {
-	if !qf.occupied.Test(uint(dq)) {
+	if !qf.occupied(uint(dq)) {
 		return false, 0
 	}
 	slot := qf.findStart(uint(dq))
@@ -376,7 +404,7 @@ func (qf *QF) lookupByHash(dq, dr uint64) (bool, uint64) {
 			return false, 0
 		}
 		qf.right(&slot)
-		if !qf.continuation.Test(uint(slot)) {
+		if !qf.continuation(slot) {
 			return false, 0
 		}
 	}
