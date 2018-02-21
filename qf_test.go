@@ -69,6 +69,7 @@ var testStrings []string = []string{
 	"a",
 	"a",
 	"a",
+
 	"a",
 	"a",
 	"a",
@@ -278,10 +279,12 @@ var testStrings []string = []string{
 	"with",
 	"work",
 	"work",
-	"’ll",
-	"’m",
-	"’m",
-	"’ve",
+	/*
+		"’ll",
+		"’m",
+		"’m",
+		"’ve",
+	*/
 }
 
 func TestBasic(t *testing.T) {
@@ -289,10 +292,14 @@ func TestBasic(t *testing.T) {
 	qf := NewWithConfig(c)
 	for _, s := range testStrings {
 		qf.InsertString(s, 0)
-		assert.True(t, qf.ContainsString(s), "%q missing", s)
+		if !assert.True(t, qf.ContainsString(s), "%q missing", s) {
+			return
+		}
 	}
 	for _, s := range testStrings {
-		assert.True(t, qf.ContainsString(s))
+		if !assert.True(t, qf.ContainsString(s), "%q missing after construction", s) {
+			return
+		}
 	}
 }
 

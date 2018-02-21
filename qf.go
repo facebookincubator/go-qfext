@@ -240,6 +240,11 @@ func (qf *QF) Insert(v []byte, count uint64) {
 	}
 	dq, dr := qf.hash(v)
 	qf.insertByHash(dq, dr, count)
+
+	if e := qf.CheckConsistency(); e != nil {
+		qf.DebugDump()
+		panic(e.Error())
+	}
 }
 
 func (qf *QF) insertByHash(dq, dr, count uint64) {
