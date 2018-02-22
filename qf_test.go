@@ -5,6 +5,8 @@ import (
 	"math/bits"
 	"testing"
 
+	"github.com/OneOfOne/xxhash"
+	murmur "github.com/aviddiviner/go-murmur"
 	"github.com/stretchr/testify/assert"
 	"github.com/willf/bloom"
 )
@@ -380,37 +382,16 @@ func TestExternalStorage(t *testing.T) {
 	}
 }
 
-func BenchmarkQuotientFilterLookup(b *testing.B) {
-	c := DetermineSize(uint(len(testStrings)), 4)
-	qf := NewWithConfig(c)
+func BenchmarkBloomFilter(b *testing.B) {
+	bf := bloom.NewWithEstimates(uint(len(testStrings)), 0.0001)
 	for _, s := range testStrings {
-		qf.InsertString(s, 0)
+		bf.AddString(s)
 	}
-
 	numStrings := len(testStrings)
-
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		qf.ContainsString(testStrings[n%numStrings])
-	}
-}
-
-func BenchmarkUnpackedQuotientFilterLookup(b *testing.B) {
-	c := DetermineSize(uint(len(testStrings)), 4)
-	c.RemainderAllocFn = UnpackedVectorAllocate
-	c.StorageAllocFn = UnpackedVectorAllocate
-	qf := NewWithConfig(c)
-	for _, s := range testStrings {
-		qf.InsertString(s, 0)
-	}
-
-	numStrings := len(testStrings)
-
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
-		qf.ContainsString(testStrings[n%numStrings])
+		bf.TestString(testStrings[n%numStrings])
 	}
 }
 
@@ -427,15 +408,109 @@ func BenchmarkMapLookup(b *testing.B) {
 	}
 }
 
-func BenchmarkBloomFilter(b *testing.B) {
-	bf := bloom.NewWithEstimates(uint(len(testStrings)), 0.0001)
+func BenchmarkUnpackedQuotientFilterLookup(b *testing.B) {
+	c := DetermineSize(uint(len(testStrings)), 0)
+	c.Representation.RemainderAllocFn = UnpackedVectorAllocate
+	qf := NewWithConfig(c)
 	for _, s := range testStrings {
-		bf.AddString(s)
+		qf.InsertString(s, 0)
 	}
+
 	numStrings := len(testStrings)
+
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		bf.TestString(testStrings[n%numStrings])
+		qf.ContainsString(testStrings[n%numStrings])
+	}
+}
+
+func BenchmarkUnpackedQuotientFilterLookupWithMurmur(b *testing.B) {
+	c := DetermineSize(uint(len(testStrings)), 0)
+	c.Representation.RemainderAllocFn = UnpackedVectorAllocate
+	c.Representation.HashFn = func(v []byte) uint {
+		return uint(murmur.MurmurHash64A(v, 0))
+	}
+	qf := NewWithConfig(c)
+	for _, s := range testStrings {
+		qf.InsertString(s, 0)
+	}
+
+	numStrings := len(testStrings)
+
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		qf.ContainsString(testStrings[n%numStrings])
+	}
+}
+
+func BenchmarkPackedQuotientFilterLookupWithXXhash(b *testing.B) {
+	c := DetermineSize(uint(len(testStrings)), 0)
+	c.Representation.HashFn = func(v []byte) uint {
+		return uint(xxhash.Checksum64(v))
+	}
+	qf := NewWithConfig(c)
+	for _, s := range testStrings {
+		qf.InsertString(s, 0)
+	}
+
+	numStrings := len(testStrings)
+
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		qf.ContainsString(testStrings[n%numStrings])
+	}
+}
+
+func BenchmarkPackedQuotientFilterLookup(b *testing.B) {
+	c := DetermineSize(uint(len(testStrings)), 0)
+	qf := NewWithConfig(c)
+	for _, s := range testStrings {
+		qf.InsertString(s, 0)
+	}
+
+	numStrings := len(testStrings)
+
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		qf.ContainsString(testStrings[n%numStrings])
+	}
+}
+
+func BenchmarkPackedQuotientFilterLookupWithMurmur(b *testing.B) {
+	c := DetermineSize(uint(len(testStrings)), 0)
+	c.Representation.HashFn = func(v []byte) uint {
+		return uint(murmur.MurmurHash64A(v, 0))
+	}
+	qf := NewWithConfig(c)
+	for _, s := range testStrings {
+		qf.InsertString(s, 0)
+	}
+
+	numStrings := len(testStrings)
+
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		qf.ContainsString(testStrings[n%numStrings])
+	}
+}
+
+func BenchmarkQuotientFilterLookupWithExternalStorage(b *testing.B) {
+	c := DetermineSize(uint(len(testStrings)), 15)
+	qf := NewWithConfig(c)
+	for i, s := range testStrings {
+		qf.InsertString(s, uint(i))
+	}
+
+	numStrings := len(testStrings)
+
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		qf.LookupString(testStrings[n%numStrings])
 	}
 }

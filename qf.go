@@ -25,7 +25,11 @@ type QF struct {
 	rMask        uint
 	maxEntries   uint
 	config       Config
+	hashfn       HashFn
 }
+
+// HashFn is the signature for hash functions used
+type HashFn func([]byte) uint
 
 // Count returns the number of entries in the quotient filter
 func (qf *QF) Count() (count uint) {
@@ -107,51 +111,6 @@ func (qf *QF) eachHashValue(cb func(uint, uint)) {
 	}
 }
 
-func DetermineSize(numberOfEntries uint, bitsOfStoragePerEntry uint) Config {
-	x := uint(1)
-	bits := uint(0)
-	for x < (numberOfEntries * 2) {
-		x <<= 1
-		bits++
-	}
-	return Config{
-		ExpectedNumberOfEntries: numberOfEntries,
-		QBits: bits,
-		BitsOfStoragePerEntry: bitsOfStoragePerEntry,
-	}
-}
-
-type Config struct {
-	ExpectedNumberOfEntries uint
-	QBits                   uint
-	RemainderAllocFn        VectorAllocateFn
-	BitsOfStoragePerEntry   uint
-	StorageAllocFn          VectorAllocateFn
-}
-
-func (c *Config) ExpectedLoading() float64 {
-	return 100. * float64(c.ExpectedNumberOfEntries) / float64(c.BucketCount())
-}
-
-func (c *Config) BytesRequired() uint {
-	bitsPerEntry := (64 - uint(c.QBits)) + 3 + uint(c.BitsOfStoragePerEntry)
-	return c.BucketCount() * bitsPerEntry / 8
-}
-
-func (c *Config) BucketCount() uint {
-	return 1 << (uint(c.QBits))
-}
-
-func (c *Config) Explain() {
-	fmt.Printf("For %d expected entities...\n", c.ExpectedNumberOfEntries)
-	fmt.Printf("%d bits needed for quotient (%d buckets)\n", c.QBits, c.BucketCount())
-	fmt.Printf("%d bits needed per bucket for remainder\n", 64-c.QBits)
-	fmt.Printf("3 bits metadata per bucket\n")
-	fmt.Printf("%d bits external storage\n", c.BitsOfStoragePerEntry)
-	fmt.Printf("%0.2f%% loading expected\n", c.ExpectedLoading())
-	fmt.Printf("%d bytes required\n", c.BytesRequired())
-}
-
 const DefaultQFBits = 4
 
 func New() *QF {
@@ -163,17 +122,22 @@ func New() *QF {
 
 func NewWithConfig(c Config) *QF {
 	var qf QF
+	if c.Representation.RemainderAllocFn == nil {
+		c.Representation.RemainderAllocFn = DefaultRepresentationConfig.RemainderAllocFn
+	}
+	if c.Representation.StorageAllocFn == nil {
+		c.Representation.StorageAllocFn = DefaultRepresentationConfig.StorageAllocFn
+	}
+	if c.Representation.HashFn == nil {
+		c.Representation.HashFn = DefaultRepresentationConfig.HashFn
+	}
+	qf.hashfn = c.Representation.HashFn
+
 	qf.size = c.BucketCount()
 	qf.metadata = bitset.New(qf.size * 3)
-	if c.RemainderAllocFn == nil {
-		c.RemainderAllocFn = BitPackedVectorAllocate
-	}
-	qf.remainders = c.RemainderAllocFn(WordSize-c.QBits, qf.size)
+	qf.remainders = c.Representation.RemainderAllocFn(WordSize-c.QBits, qf.size)
 	if c.BitsOfStoragePerEntry > 0 {
-		if c.StorageAllocFn == nil {
-			c.StorageAllocFn = BitPackedVectorAllocate
-		}
-		qf.storage = c.StorageAllocFn(c.BitsOfStoragePerEntry, qf.size)
+		qf.storage = c.Representation.StorageAllocFn(c.BitsOfStoragePerEntry, qf.size)
 	}
 	qf.qBits = c.QBits
 	qf.rBits = (64 - c.QBits)
@@ -463,14 +427,18 @@ const (
 	prime64  = uint(1099511628211)
 )
 
-func (qf *QF) hash(v []byte) (q, r uint) {
+func fnvhash(v []byte) uint {
 	// inline fnv 64
 	hv := offset64
 	for _, c := range v {
 		hv *= prime64
 		hv ^= uint(c)
 	}
+	return hv
+}
 
+func (qf *QF) hash(v []byte) (q, r uint) {
+	hv := qf.hashfn(v)
 	dq := hv >> qf.rBits
 	dr := hv & qf.rMask
 	return uint(dq), uint(dr)
