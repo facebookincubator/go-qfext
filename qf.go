@@ -1,30 +1,39 @@
+// package qf implements a quotient filter data
+// structure which supports:
+//  1. external storage per entry
+//  2. dynamic doubling
+//  3. packed or unpacked representations (choose time or space)
+//  4. variable hash function
 package qf
 
 import (
 	"fmt"
 	"math"
-	"math/bits"
 	"unsafe"
 
 	"github.com/willf/bitset"
 )
 
+// QF is a quotient filter representation
 type QF struct {
 	entries      uint
+	size         uint
 	metadata     *bitset.BitSet
-	remainders   *packed
-	storage      *packed
+	remainders   Vector
+	storage      Vector
 	rBits, qBits uint
-	rMask        uint64
+	rMask        uint
 	maxEntries   uint
+	config       Config
 }
 
-func (qf *QF) Entries() (count uint) {
+// Count returns the number of entries in the quotient filter
+func (qf *QF) Count() (count uint) {
 	return qf.countEntries()
 }
 
 func (qf *QF) countEntries() (count uint) {
-	for i := uint(0); i < qf.remainders.len(); i++ {
+	for i := uint(0); i < qf.size; i++ {
 		if !qf.read(i).empty() {
 			count++
 		}
@@ -32,10 +41,12 @@ func (qf *QF) countEntries() (count uint) {
 	return
 }
 
+// DebugDump prints a textual representation of the quotient filter
+// to stdout
 func (qf *QF) DebugDump() {
 	fmt.Printf("\n  bucket  O C S remainder->\n")
 	skipped := 0
-	for i := uint(0); i < qf.remainders.len(); i++ {
+	for i := uint(0); i < qf.size; i++ {
 		o, c, s := 0, 0, 0
 		md := qf.read(i)
 		if md.occupied {
@@ -54,10 +65,10 @@ func (qf *QF) DebugDump() {
 				fmt.Printf("          ...\n")
 				skipped = 0
 			}
-			r := qf.remainders.get(i)
-			v := uint64(0)
+			r := qf.remainders.Get(i)
+			v := uint(0)
 			if qf.storage != nil {
-				v = qf.storage.get(i)
+				v = qf.storage.Get(i)
 			}
 			fmt.Printf("%8d  %d %d %d %x (%d)\n", i, o, c, s, r, v)
 		}
@@ -68,9 +79,9 @@ func (qf *QF) DebugDump() {
 }
 
 // iterate the qf and call the callback once for each hash value present
-func (qf *QF) eachHashValue(cb func(uint64, uint)) {
+func (qf *QF) eachHashValue(cb func(uint, uint)) {
 	// a stack of q values
-	stack := []uint64{}
+	stack := []uint{}
 	// let's start from an unshifted value
 	start := uint(0)
 	for qf.read(start).shifted {
@@ -84,10 +95,10 @@ func (qf *QF) eachHashValue(cb func(uint64, uint)) {
 			stack = stack[1:]
 		}
 		if md.occupied {
-			stack = append(stack, uint64(i))
+			stack = append(stack, i)
 		}
 		if len(stack) > 0 {
-			r := qf.remainders.get(i)
+			r := qf.remainders.Get(i)
 			cb((stack[0]<<qf.rBits)|(r&qf.rMask), i)
 		}
 		if i == end {
@@ -96,22 +107,26 @@ func (qf *QF) eachHashValue(cb func(uint64, uint)) {
 	}
 }
 
-func DetermineSize(numberOfEntries uint64, bitsOfStoragePerEntry uint8) Config {
-	x := uint64(1)
+func DetermineSize(numberOfEntries uint, bitsOfStoragePerEntry uint) Config {
+	x := uint(1)
+	bits := uint(0)
 	for x < (numberOfEntries * 2) {
 		x <<= 1
+		bits++
 	}
 	return Config{
 		ExpectedNumberOfEntries: numberOfEntries,
-		QBits: uint(bits.TrailingZeros64(x)),
+		QBits: bits,
 		BitsOfStoragePerEntry: bitsOfStoragePerEntry,
 	}
 }
 
 type Config struct {
-	ExpectedNumberOfEntries uint64
+	ExpectedNumberOfEntries uint
 	QBits                   uint
-	BitsOfStoragePerEntry   uint8
+	RemainderAllocFn        VectorAllocateFn
+	BitsOfStoragePerEntry   uint
+	StorageAllocFn          VectorAllocateFn
 }
 
 func (c *Config) ExpectedLoading() float64 {
@@ -148,21 +163,28 @@ func New() *QF {
 
 func NewWithConfig(c Config) *QF {
 	var qf QF
-	n := c.BucketCount()
-	qf.metadata = bitset.New(n * 3)
-	qf.remainders = newPacked(uint8(64-c.QBits), n)
+	qf.size = c.BucketCount()
+	qf.metadata = bitset.New(qf.size * 3)
+	if c.RemainderAllocFn == nil {
+		c.RemainderAllocFn = BitPackedVectorAllocate
+	}
+	qf.remainders = c.RemainderAllocFn(WordSize-c.QBits, qf.size)
 	if c.BitsOfStoragePerEntry > 0 {
-		qf.storage = newPacked(uint8(c.BitsOfStoragePerEntry), n)
+		if c.StorageAllocFn == nil {
+			c.StorageAllocFn = BitPackedVectorAllocate
+		}
+		qf.storage = c.StorageAllocFn(c.BitsOfStoragePerEntry, qf.size)
 	}
 	qf.qBits = c.QBits
 	qf.rBits = (64 - c.QBits)
 	for i := uint(0); i < qf.rBits; i++ {
 		qf.rMask |= 1 << i
 	}
-	qf.maxEntries = uint(math.Ceil(float64(n) * 0.65))
-	if qf.maxEntries > n {
+	qf.maxEntries = uint(math.Ceil(float64(qf.size) * 0.65))
+	if qf.maxEntries > qf.size {
 		panic("internal inconsistency")
 	}
+	qf.config = c
 	return &qf
 }
 
@@ -225,7 +247,7 @@ func (qf *QF) CheckConsistency() error {
 	// non-zero length run
 	usage := map[uint]uint{}
 
-	for i := uint(0); i < qf.remainders.len(); i++ {
+	for i := uint(0); i < qf.size; i++ {
 		md := qf.read(i)
 		if !md.occupied {
 			continue
@@ -254,42 +276,37 @@ func (qf *QF) CheckConsistency() error {
 	return nil
 }
 
-func (qf *QF) InsertString(s string, value uint64) {
+func (qf *QF) InsertString(s string, value uint) {
 	qf.Insert(*(*[]byte)(unsafe.Pointer(&s)), value)
 }
 
 func (qf *QF) double() {
-	storageBits := uint8(0)
-	if qf.storage != nil {
-		storageBits = qf.storage.bits
-	}
-	cpy := NewWithConfig(Config{
-		QBits: qf.qBits + 1,
-		BitsOfStoragePerEntry: storageBits,
-	})
-	qf.eachHashValue(func(hv uint64, slot uint) {
+	cfg := qf.config
+	cfg.QBits++
+	cpy := NewWithConfig(cfg)
+	qf.eachHashValue(func(hv uint, slot uint) {
 		dq := hv >> cpy.rBits
 		dr := hv & cpy.rMask
-		v := uint64(0)
+		var v uint
 		if qf.storage != nil {
-			v = qf.storage.get(slot)
+			v = qf.storage.Get(slot)
 		}
-		cpy.insertByHash(dq, dr, v) // XXX count
+		cpy.insertByHash(dq, dr, v)
 	})
 
 	// shallow copy in
 	*qf = *cpy
 }
 
-func (qf *QF) Insert(v []byte, value uint64) {
+func (qf *QF) Insert(v []byte, value uint) {
 	if qf.maxEntries <= qf.entries {
 		qf.double()
 	}
 	dq, dr := qf.hash(v)
-	qf.insertByHash(dq, dr, value)
+	qf.insertByHash(uint(dq), uint(dr), value)
 }
 
-func (qf *QF) insertByHash(dq, dr, value uint64) {
+func (qf *QF) insertByHash(dq, dr, value uint) {
 	md := qf.read(uint(dq))
 
 	// if the occupied bit is set for this dq, then we are
@@ -301,9 +318,9 @@ func (qf *QF) insertByHash(dq, dr, value uint64) {
 	// easy case!
 	if md.empty() {
 		qf.entries++
-		qf.remainders.set(uint(dq), dr)
+		qf.remainders.Swap(uint(dq), dr)
 		if qf.storage != nil {
-			qf.storage.set(uint(dq), value)
+			qf.storage.Swap(uint(dq), value)
 		}
 		return
 	}
@@ -316,7 +333,7 @@ func (qf *QF) insertByHash(dq, dr, value uint64) {
 	if extendingRun {
 		md = qf.read(slot)
 		for {
-			if md.empty() || qf.remainders.get(slot) >= dr {
+			if md.empty() || qf.remainders.Get(slot) >= dr {
 				break
 			}
 			qf.right(&slot)
@@ -327,10 +344,10 @@ func (qf *QF) insertByHash(dq, dr, value uint64) {
 		}
 	}
 
-	if dr == qf.remainders.get(slot) {
+	if dr == qf.remainders.Get(slot) {
 		// update value
 		if qf.storage != nil {
-			qf.storage.set(slot, value)
+			qf.storage.Swap(slot, value)
 		}
 		return
 	}
@@ -343,9 +360,9 @@ func (qf *QF) insertByHash(dq, dr, value uint64) {
 	md.continuation = slot != runStart
 
 	for {
-		dr = qf.remainders.set(slot, dr)
+		dr = qf.remainders.Swap(slot, dr)
 		if qf.storage != nil {
-			value = qf.storage.set(slot, value)
+			value = qf.storage.Swap(slot, value)
 		}
 		nxt := qf.read(slot)
 		if (slot == runStart) && extendingRun {
@@ -364,14 +381,14 @@ func (qf *QF) insertByHash(dq, dr, value uint64) {
 
 func (qf *QF) right(i *uint) {
 	*i++
-	if *i >= qf.remainders.len() {
+	if *i >= qf.size {
 		*i = 0
 	}
 }
 
 func (qf *QF) left(i *uint) {
 	if *i == 0 {
-		*i += qf.remainders.len()
+		*i += qf.size
 	}
 	*i--
 }
@@ -408,21 +425,21 @@ func (qf *QF) ContainsString(s string) bool {
 	return qf.Contains(*(*[]byte)(unsafe.Pointer(&s)))
 }
 
-func (qf *QF) Lookup(v []byte) (bool, uint64) {
+func (qf *QF) Lookup(v []byte) (bool, uint) {
 	return qf.lookupByHash(qf.hash(v))
 }
 
-func (qf *QF) lookupByHash(dq, dr uint64) (bool, uint64) {
+func (qf *QF) lookupByHash(dq, dr uint) (bool, uint) {
 	if !qf.occupied(uint(dq)) {
 		return false, 0
 	}
 	slot := qf.findStart(uint(dq))
 	for {
-		sv := qf.remainders.get(slot)
+		sv := qf.remainders.Get(slot)
 		if sv == dr {
-			value := uint64(0)
+			value := uint(0)
 			if qf.storage != nil {
-				value = qf.storage.get(slot)
+				value = qf.storage.Get(slot)
 			}
 			return true, value
 		}
@@ -437,23 +454,24 @@ func (qf *QF) lookupByHash(dq, dr uint64) (bool, uint64) {
 	return false, 0
 }
 
-func (qf *QF) LookupString(s string) (bool, uint64) {
+func (qf *QF) LookupString(s string) (bool, uint) {
 	return qf.Lookup(*(*[]byte)(unsafe.Pointer(&s)))
 }
 
 const (
-	offset64 = uint64(14695981039346656037)
-	prime64  = uint64(1099511628211)
+	offset64 = uint(14695981039346656037)
+	prime64  = uint(1099511628211)
 )
 
-func (qf *QF) hash(v []byte) (q, r uint64) {
+func (qf *QF) hash(v []byte) (q, r uint) {
 	// inline fnv 64
 	hv := offset64
 	for _, c := range v {
 		hv *= prime64
-		hv ^= uint64(c)
+		hv ^= uint(c)
 	}
+
 	dq := hv >> qf.rBits
 	dr := hv & qf.rMask
-	return dq, dr
+	return uint(dq), uint(dr)
 }

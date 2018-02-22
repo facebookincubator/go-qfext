@@ -287,7 +287,7 @@ var testStrings []string = []string{
 }
 
 func TestBasic(t *testing.T) {
-	c := DetermineSize(uint64(len(testStrings)), 4)
+	c := DetermineSize(uint(len(testStrings)), 4)
 	qf := NewWithConfig(c)
 	for _, s := range testStrings {
 		qf.InsertString(s, 0)
@@ -316,24 +316,24 @@ func TestDoubling(t *testing.T) {
 
 func TestSizeEstimate(t *testing.T) {
 	c := DetermineSize(5500000, 4)
-	assert.Equal(t, int(c.BytesRequired()), 98566144)
+	assert.Equal(t, 98566144, int(c.BytesRequired()))
 }
 
 func TestCheckHashes(t *testing.T) {
-	c := DetermineSize(uint64(len(testStrings)), 4)
+	c := DetermineSize(uint(len(testStrings)), 4)
 	qf := NewWithConfig(c)
-	expected := map[uint64]struct{}{}
+	expected := map[uint]struct{}{}
 	for _, s := range testStrings {
 		qf.InsertString(s, 0)
 		assert.NoError(t, qf.CheckConsistency())
 		hash := fnv.New64()
 		hash.Write([]byte(s))
 		hv := hash.Sum64()
-		expected[hv] = struct{}{}
+		expected[uint(hv)] = struct{}{}
 	}
 	assert.NoError(t, qf.CheckConsistency())
-	got := map[uint64]struct{}{}
-	qf.eachHashValue(func(hv uint64, _ uint) {
+	got := map[uint]struct{}{}
+	qf.eachHashValue(func(hv uint, _ uint) {
 		got[hv] = struct{}{}
 	})
 
@@ -347,25 +347,25 @@ func TestCheckHashes(t *testing.T) {
 		assert.True(t, found, "unexpected hash value %x", hv)
 	}
 	assert.Equal(t, len(expected), len(got))
-	assert.Equal(t, len(expected), int(qf.Entries()))
+	assert.Equal(t, len(expected), int(qf.Count()))
 }
 
 func TestExternalStorage(t *testing.T) {
 	qf := NewWithConfig(Config{
 		QBits: 2,
-		BitsOfStoragePerEntry: uint8(64 - bits.LeadingZeros64(uint64(len(testStrings)))),
+		BitsOfStoragePerEntry: uint(64 - bits.LeadingZeros64(uint64(len(testStrings)))),
 	})
 	qf.InsertString("hi mom", 42)
 	found, val := qf.LookupString("hi mom")
 	assert.True(t, found)
-	assert.Equal(t, val, uint64(42))
+	assert.Equal(t, val, uint(42))
 	last := ""
 	for i, s := range testStrings {
 		if s != last {
-			qf.InsertString(s, uint64(i))
+			qf.InsertString(s, uint(i))
 			found, val := qf.LookupString(s)
 			assert.True(t, found)
-			assert.Equal(t, val, uint64(i))
+			assert.Equal(t, val, uint(i))
 		}
 		last = s
 	}
@@ -374,14 +374,32 @@ func TestExternalStorage(t *testing.T) {
 		if s != last {
 			found, val := qf.LookupString(s)
 			assert.True(t, found)
-			assert.Equal(t, val, uint64(i))
+			assert.Equal(t, val, uint(i))
 		}
 		last = s
 	}
 }
 
 func BenchmarkQuotientFilterLookup(b *testing.B) {
-	c := DetermineSize(uint64(len(testStrings)), 4)
+	c := DetermineSize(uint(len(testStrings)), 4)
+	qf := NewWithConfig(c)
+	for _, s := range testStrings {
+		qf.InsertString(s, 0)
+	}
+
+	numStrings := len(testStrings)
+
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		qf.ContainsString(testStrings[n%numStrings])
+	}
+}
+
+func BenchmarkUnpackedQuotientFilterLookup(b *testing.B) {
+	c := DetermineSize(uint(len(testStrings)), 4)
+	c.RemainderAllocFn = UnpackedVectorAllocate
+	c.StorageAllocFn = UnpackedVectorAllocate
 	qf := NewWithConfig(c)
 	for _, s := range testStrings {
 		qf.InsertString(s, 0)

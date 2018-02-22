@@ -1,19 +1,30 @@
 package qf
 
 import (
+	"io"
+	"math/bits"
+
 	"fmt"
 )
 
+const WordSize = bits.UintSize
+
 type packed struct {
-	forbiddenMask uint64
-	bits          uint8
-	space         []uint64
+	forbiddenMask uint
+	bits          uint
+	space         []uint
 	size          uint
 }
 
-func newPacked(bits uint8, size uint) *packed {
-	var forbiddenMask uint64
-	bit := uint64(1)
+var _ Vector = (*packed)(nil)
+
+func BitPackedVectorAllocate(bits uint, size uint) Vector {
+	if bits > WordSize {
+		panic(fmt.Sprintf("bit size of %d is greater than word size of %s, not supported",
+			bits, WordSize))
+	}
+	var forbiddenMask uint
+	bit := uint(1)
 	for i := 0; i < int(bits); i++ {
 		forbiddenMask |= bit
 		bit <<= 1
@@ -21,24 +32,21 @@ func newPacked(bits uint8, size uint) *packed {
 	forbiddenMask = ^forbiddenMask
 
 	// calculate required space.
-	words := (size * uint(bits) / 64) + 1
-	return &packed{forbiddenMask, bits, make([]uint64, words), size}
+	words := ((size * bits) / WordSize) + 1
+	return &packed{forbiddenMask, bits, make([]uint, words), size}
 }
 
-//                 | bitoff, the bit offset into the word
-//                 V
-//                   1 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 2 2 2 3 3 3
-// 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2
-//                 \---------------/
-//                    getbits - the number of interesting bits in this
-//                              word
-//
-func (p *packed) set(ix uint, val uint64) (oldval uint64) {
+func (p *packed) Swap(ix uint, val uint) (oldval uint) {
+	// XXX this could be more efficient
+	oldval = p.Get(ix)
+	p.Set(ix, val)
+	return
+}
+
+func (p *packed) Set(ix uint, val uint) {
 	if val&p.forbiddenMask != 0 {
 		panic(fmt.Sprintf("attempt to store out of range value.  numeric overflow: %x (%x)", (val & p.forbiddenMask), val))
 	}
-	// XXX this should be more efficient
-	oldval = p.get(ix)
 	bitstart := ix * uint(p.bits)
 	word := bitstart / 64
 	bitoff := bitstart % 64
@@ -61,7 +69,7 @@ func (p *packed) set(ix uint, val uint64) (oldval uint64) {
 	return
 }
 
-func (p *packed) get(ix uint) (val uint64) {
+func (p *packed) Get(ix uint) (val uint) {
 	bitstart := ix * uint(p.bits)
 	word := bitstart / 64
 	bitoff := bitstart % 64
@@ -82,6 +90,10 @@ func (p *packed) get(ix uint) (val uint64) {
 	return val
 }
 
-func (p *packed) len() uint {
-	return p.size
+func (v packed) WriteTo(w io.Writer) (n int64, err error) {
+	return 0, fmt.Errorf("not implemented")
+}
+
+func (v packed) Read(r io.Reader) (n Vector, err error) {
+	return nil, fmt.Errorf("not implemented")
 }
