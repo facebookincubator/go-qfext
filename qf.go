@@ -14,6 +14,8 @@ import (
 	"github.com/willf/bitset"
 )
 
+const MaxLoadingFactor = 0.65
+
 // QF is a quotient filter representation
 type QF struct {
 	entries      uint
@@ -133,23 +135,29 @@ func NewWithConfig(c Config) *QF {
 	}
 	qf.hashfn = c.Representation.HashFn
 
-	qf.size = c.BucketCount()
+	qf.initForQuotientBits(c.QBits)
+
 	qf.metadata = bitset.New(qf.size * 3)
-	qf.remainders = c.Representation.RemainderAllocFn(WordSize-c.QBits, qf.size)
+	qf.remainders = c.Representation.RemainderAllocFn(BitsPerWord-c.QBits, qf.size)
 	if c.BitsOfStoragePerEntry > 0 {
 		qf.storage = c.Representation.StorageAllocFn(c.BitsOfStoragePerEntry, qf.size)
 	}
-	qf.qBits = c.QBits
-	qf.rBits = (64 - c.QBits)
-	for i := uint(0); i < qf.rBits; i++ {
-		qf.rMask |= 1 << i
-	}
-	qf.maxEntries = uint(math.Ceil(float64(qf.size) * 0.65))
 	if qf.maxEntries > qf.size {
 		panic("internal inconsistency")
 	}
 	qf.config = c
 	return &qf
+}
+
+func (qf *QF) initForQuotientBits(qBits uint) {
+	qf.qBits = qBits
+	qf.size = 1 << (uint(qBits))
+	qf.rBits = (BitsPerWord - qBits)
+	qf.rMask = 0
+	for i := uint(0); i < qf.rBits; i++ {
+		qf.rMask |= 1 << i
+	}
+	qf.maxEntries = uint(math.Ceil(float64(qf.size) * MaxLoadingFactor))
 }
 
 type metadata struct {

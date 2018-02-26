@@ -19,5 +19,5 @@ type Vector interface {
 	io.WriterTo
 	// Read will construct a new vector from the specified io.Reader
 	// and return it
-	Read(r io.Reader) (Vector, error)
+	ReadFrom(r io.Reader) (int64, error)
 }

@@ -1,6 +1,7 @@
 package qf
 
 import (
+	"bytes"
 	"hash/fnv"
 	"math/bits"
 	"testing"
@@ -313,6 +314,66 @@ func TestDoubling(t *testing.T) {
 	}
 	for _, s := range testStrings {
 		assert.True(t, qf.ContainsString(s), "%q missing after construction", s)
+	}
+}
+
+func TestSerialization(t *testing.T) {
+	qf := New()
+	for _, s := range testStrings {
+		qf.InsertString(s, 0)
+		assert.True(t, qf.ContainsString(s), "%q missing after insertion", s)
+	}
+	var buf bytes.Buffer
+	wt, err := qf.WriteTo(&buf)
+	assert.NoError(t, err)
+	qf = New()
+	rd, err2 := qf.ReadFrom(&buf)
+	assert.NoError(t, err2)
+	assert.Equal(t, wt, rd)
+	for _, s := range testStrings {
+		if !assert.True(t, qf.ContainsString(s), "%q missing after construction", s) {
+			return
+		}
+	}
+}
+
+func TestSerializationExternal(t *testing.T) {
+	qf := NewWithConfig(Config{
+		QBits: 1,
+		BitsOfStoragePerEntry: uint(64 - bits.LeadingZeros64(uint64(len(testStrings)))),
+	})
+	last := ""
+	for i, s := range testStrings {
+		if s != last {
+			qf.InsertString(s, uint(i))
+			found, val := qf.LookupString(s)
+			assert.True(t, found)
+			assert.Equal(t, val, uint(i))
+		}
+		last = s
+	}
+	last = ""
+
+	var buf bytes.Buffer
+	wt, err := qf.WriteTo(&buf)
+	assert.NoError(t, err)
+
+	qf = NewWithConfig(Config{
+		QBits: 1,
+		BitsOfStoragePerEntry: uint(64 - bits.LeadingZeros64(uint64(len(testStrings)))),
+	})
+
+	rd, err2 := qf.ReadFrom(&buf)
+	assert.NoError(t, err2)
+	assert.Equal(t, wt, rd)
+
+	for i, s := range testStrings {
+		if s != last {
+			found, val := qf.LookupString(s)
+			assert.True(t, found)
+			assert.Equal(t, val, uint(i))
+		}
+		last = s
 	}
 }
 
