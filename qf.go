@@ -149,6 +149,10 @@ func NewWithConfig(c Config) *QF {
 	return &qf
 }
 
+func (qf *QF) BitsOfStoragePerEntry() uint {
+	return qf.config.BitsOfStoragePerEntry
+}
+
 func (qf *QF) initForQuotientBits(qBits uint) {
 	qf.qBits = qBits
 	qf.size = 1 << (uint(qBits))
