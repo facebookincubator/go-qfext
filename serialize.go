@@ -32,6 +32,10 @@ func (qf *QF) WriteTo(stream io.Writer) (i int64, err error) {
 		return
 	}
 	i += int64(unsafe.Sizeof(uint64(qf.qBits)))
+	if err = binary.Write(stream, binary.LittleEndian, uint64(qf.config.BitsOfStoragePerEntry)); err != nil {
+		return
+	}
+	i += int64(unsafe.Sizeof(uint64(qf.config.BitsOfStoragePerEntry)))
 
 	if x, e := qf.metadata.WriteTo(stream); e != nil {
 		err = e
@@ -58,7 +62,7 @@ func (qf *QF) WriteTo(stream io.Writer) (i int64, err error) {
 }
 
 func (qf *QF) ReadFrom(stream io.Reader) (i int64, err error) {
-	var entries, qBits uint64
+	var entries, qBits, storageBits uint64
 	var ver uint64
 	if err = binary.Read(stream, binary.LittleEndian, &ver); err != nil {
 		return
@@ -76,6 +80,10 @@ func (qf *QF) ReadFrom(stream io.Reader) (i int64, err error) {
 		return
 	}
 	i += int64(unsafe.Sizeof(qBits))
+	if err = binary.Read(stream, binary.LittleEndian, &storageBits); err != nil {
+		return
+	}
+	i += int64(unsafe.Sizeof(storageBits))
 
 	var nqf QF
 	nqf.hashfn = qf.hashfn
@@ -97,7 +105,10 @@ func (qf *QF) ReadFrom(stream io.Reader) (i int64, err error) {
 		return
 	}
 
-	if nqf.config.BitsOfStoragePerEntry > 0 {
+	// read bits
+
+	if storageBits > 0 {
+		nqf.config.BitsOfStoragePerEntry = uint(storageBits)
 		nqf.storage = qf.config.Representation.StorageAllocFn(0, 0)
 		n, err = nqf.storage.ReadFrom(stream)
 		i += n

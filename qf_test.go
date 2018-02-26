@@ -358,10 +358,8 @@ func TestSerializationExternal(t *testing.T) {
 	wt, err := qf.WriteTo(&buf)
 	assert.NoError(t, err)
 
-	qf = NewWithConfig(Config{
-		QBits: 1,
-		BitsOfStoragePerEntry: uint(64 - bits.LeadingZeros64(uint64(len(testStrings)))),
-	})
+	// read from should figure out that external storage is present
+	qf = New()
 
 	rd, err2 := qf.ReadFrom(&buf)
 	assert.NoError(t, err2)
