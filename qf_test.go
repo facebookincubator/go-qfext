@@ -2,6 +2,7 @@ package qf
 
 import (
 	"bytes"
+	"fmt"
 	"math/bits"
 	"testing"
 
@@ -10,8 +11,46 @@ import (
 	"github.com/willf/bloom"
 )
 
-var testStrings []string = []string{
+// testing specific consistency checking
+func (qf *QF) checkConsistency() error {
+	if qf.countEntries() != qf.entries {
+		return fmt.Errorf("%d items added, only %d found", qf.entries, qf.countEntries())
+	}
 
+	// now let's ensure that for every set occupied bit there is a
+	// non-zero length run
+	usage := map[uint]uint{}
+
+	for i := uint(0); i < qf.size; i++ {
+		md := qf.read(i)
+		if !md.occupied {
+			continue
+		}
+		dq := i
+		runStart := qf.findStart(dq)
+		// ok, for bucket dq we've got a run starting at runStart
+		for {
+			who, used := usage[runStart]
+			if used {
+				return fmt.Errorf("slot %d used by both dq %d and %d", runStart, dq, who)
+			}
+			usage[runStart] = dq
+			qf.right(&runStart)
+			md := qf.read(runStart)
+			if !md.continuation {
+				break
+			}
+		}
+	}
+	if uint(len(usage)) != qf.entries {
+		return fmt.Errorf("records show %d entries in qf, found %d via scanning",
+			qf.entries, len(usage))
+	}
+
+	return nil
+}
+
+var testStrings = []string{
 	" stores",
 	"!) can",
 	"% loading",
@@ -384,27 +423,27 @@ func TestCheckHashes(t *testing.T) {
 	expected := map[uint]struct{}{}
 	for _, s := range testStrings {
 		qf.InsertString(s, 0)
-		assert.NoError(t, qf.CheckConsistency())
+		assert.NoError(t, qf.checkConsistency())
 		hv := murmur.MurmurHash64A([]byte(s), 0)
 		expected[uint(hv)] = struct{}{}
 	}
-	assert.NoError(t, qf.CheckConsistency())
+	assert.NoError(t, qf.checkConsistency())
 	got := map[uint]struct{}{}
 	qf.eachHashValue(func(hv uint, _ uint) {
 		got[hv] = struct{}{}
 	})
 
-	for hv, _ := range expected {
+	for hv := range expected {
 		_, found := got[hv]
 		assert.True(t, found, "missing hash value %x", hv)
 	}
 
-	for hv, _ := range got {
+	for hv := range got {
 		_, found := expected[hv]
 		assert.True(t, found, "unexpected hash value %x", hv)
 	}
 	assert.Equal(t, len(expected), len(got))
-	assert.Equal(t, len(expected), int(qf.Count()))
+	assert.Equal(t, len(expected), int(qf.Len()))
 }
 
 func TestExternalStorage(t *testing.T) {

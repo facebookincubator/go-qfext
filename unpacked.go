@@ -10,6 +10,8 @@ type unpacked []uint
 
 var _ Vector = (*unpacked)(nil)
 
+// UnpackedVectorAllocate allocates non-bitpacked storage with a portable
+// serialization format (i.e. between architectures)
 func UnpackedVectorAllocate(bits uint, size uint) Vector {
 	if bits > BitsPerWord {
 		panic(fmt.Sprintf("bit size of %d is greater than word size of %s, not supported",

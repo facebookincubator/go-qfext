@@ -9,7 +9,10 @@ import (
 	"github.com/willf/bitset"
 )
 
-const RepresentationVersion = uint64(0x0001)
+// RepresentationVersion is a version number for the
+// on disk representation format.  Any time incompatible
+// changes are made, it is bumped
+const RepresentationVersion = uint64(0x0002)
 
 // Header describes a serialized quotient filter
 type Header struct {
@@ -19,6 +22,10 @@ type Header struct {
 	QBits uint
 }
 
+// WriteTo allows the quotient filter to be written to a stream
+//
+// WARNING: the default storage format is very fast, but not portable
+// to architectures of differing word length or endianness
 func (qf *QF) WriteTo(stream io.Writer) (i int64, err error) {
 	if err = binary.Write(stream, binary.LittleEndian, RepresentationVersion); err != nil {
 		return
@@ -37,30 +44,34 @@ func (qf *QF) WriteTo(stream io.Writer) (i int64, err error) {
 	}
 	i += int64(unsafe.Sizeof(uint64(qf.config.BitsOfStoragePerEntry)))
 
-	if x, e := qf.metadata.WriteTo(stream); e != nil {
-		err = e
+	var x int64
+	x, err = qf.metadata.WriteTo(stream)
+	i += x
+	if err != nil {
 		return
-	} else {
-		i += x
 	}
-	if x, e := qf.remainders.WriteTo(stream); e != nil {
-		err = e
+
+	x, err = qf.remainders.WriteTo(stream)
+	i += x
+	if err != nil {
 		return
-	} else {
-		i += x
 	}
+
 	if qf.storage != nil {
-		if x, e := qf.storage.WriteTo(stream); e != nil {
-			err = e
+		x, err = qf.storage.WriteTo(stream)
+		i += x
+		if err != nil {
 			return
-		} else {
-			i += x
 		}
 	}
 
 	return
 }
 
+// ReadFrom allows the quotient filter to be read from a stream
+//
+// WARNING: the default storage format is very fast, but not portable
+// to architectures of differing word length or endianness
 func (qf *QF) ReadFrom(stream io.Reader) (i int64, err error) {
 	var entries, qBits, storageBits uint64
 	var ver uint64
@@ -117,7 +128,7 @@ func (qf *QF) ReadFrom(stream io.Reader) (i int64, err error) {
 		}
 	}
 
-	// overwrite myself, preserve the representation paramters
+	// overwrite myself, preserve the representation parameters
 	// in the instance.
 	rep := qf.config.Representation
 	*qf = nqf

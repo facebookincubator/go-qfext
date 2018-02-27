@@ -1,4 +1,4 @@
-// package qf implements a quotient filter data
+// Package qf implements a quotient filter data
 // structure which supports:
 //  1. external storage per entry
 //  2. dynamic doubling
@@ -14,6 +14,9 @@ import (
 	"github.com/willf/bitset"
 )
 
+// MaxLoadingFactor specifies the boundary at which we will double
+// the quotient filter hash table and also is used to initially size
+// the table.
 const MaxLoadingFactor = 0.65
 
 // QF is a quotient filter representation
@@ -30,21 +33,9 @@ type QF struct {
 	hashfn       HashFn
 }
 
-// HashFn is the signature for hash functions used
-type HashFn func([]byte) uint
-
-// Count returns the number of entries in the quotient filter
-func (qf *QF) Count() (count uint) {
-	return qf.countEntries()
-}
-
-func (qf *QF) countEntries() (count uint) {
-	for i := uint(0); i < qf.size; i++ {
-		if !qf.read(i).empty() {
-			count++
-		}
-	}
-	return
+// Len returns the number of entries in the quotient filter
+func (qf *QF) Len() uint {
+	return qf.entries
 }
 
 // DebugDump prints a textual representation of the quotient filter
@@ -113,15 +104,17 @@ func (qf *QF) eachHashValue(cb func(uint, uint)) {
 	}
 }
 
-const DefaultQFBits = 4
-
+// New allocates a new quotient filter with default initial
+// sizing and no external storage configured.
 func New() *QF {
 	return NewWithConfig(Config{
-		QBits: DefaultQFBits,
+		QBits: DefaultQBits,
 		BitsOfStoragePerEntry: 0,
 	})
 }
 
+// NewWithConfig allocates a new quotient filter based on the
+// supplied configuration
 func NewWithConfig(c Config) *QF {
 	var qf QF
 	if c.Representation.RemainderAllocFn == nil {
@@ -149,6 +142,8 @@ func NewWithConfig(c Config) *QF {
 	return &qf
 }
 
+// BitsOfStoragePerEntry reports the configured external storage for the
+// quotient filter
 func (qf *QF) BitsOfStoragePerEntry() uint {
 	return qf.config.BitsOfStoragePerEntry
 }
@@ -214,46 +209,19 @@ func (qf *QF) setShiftedTo(slot uint, to bool) {
 	qf.metadata.SetTo(slot*3+2, to)
 }
 
-func (qf *QF) CheckConsistency() error {
-	if qf.countEntries() != qf.entries {
-		return fmt.Errorf("%d items added, only %d found", qf.entries, qf.countEntries())
-	}
-
-	// now let's ensure that for every set occupied bit there is a
-	// non-zero length run
-	usage := map[uint]uint{}
-
+func (qf *QF) countEntries() (count uint) {
 	for i := uint(0); i < qf.size; i++ {
-		md := qf.read(i)
-		if !md.occupied {
-			continue
-		}
-		dq := i
-		runStart := qf.findStart(dq)
-		// ok, for bucket dq we've got a run starting at runStart
-		for {
-			who, used := usage[runStart]
-			if used {
-				return fmt.Errorf("slot %d used by both dq %d and %d", runStart, dq, who)
-			}
-			usage[runStart] = dq
-			qf.right(&runStart)
-			md := qf.read(runStart)
-			if !md.continuation {
-				break
-			}
+		if !qf.read(i).empty() {
+			count++
 		}
 	}
-	if uint(len(usage)) != qf.entries {
-		return fmt.Errorf("records show %d entries in qf, found %d via scanning",
-			qf.entries, len(usage))
-	}
-
-	return nil
+	return
 }
 
-func (qf *QF) InsertString(s string, value uint) {
-	qf.Insert(*(*[]byte)(unsafe.Pointer(&s)), value)
+// InsertString stores the key (string) value in the quotient filter
+// it returns whether a value already existed behind the hash key for s.
+func (qf *QF) InsertString(s string, value uint) bool {
+	return qf.Insert(*(*[]byte)(unsafe.Pointer(&s)), value)
 }
 
 func (qf *QF) double() {
@@ -274,15 +242,17 @@ func (qf *QF) double() {
 	*qf = *cpy
 }
 
-func (qf *QF) Insert(v []byte, value uint) {
+// Insert stores the key (byte slice) and value in the quotient filter
+// it returns whether a value already existed behind the hash key for s.
+func (qf *QF) Insert(v []byte, value uint) (update bool) {
 	if qf.maxEntries <= qf.entries {
 		qf.double()
 	}
 	dq, dr := qf.hash(v)
-	qf.insertByHash(uint(dq), uint(dr), value)
+	return qf.insertByHash(uint(dq), uint(dr), value)
 }
 
-func (qf *QF) insertByHash(dq, dr, value uint) {
+func (qf *QF) insertByHash(dq, dr, value uint) bool {
 	md := qf.read(uint(dq))
 
 	// if the occupied bit is set for this dq, then we are
@@ -298,7 +268,7 @@ func (qf *QF) insertByHash(dq, dr, value uint) {
 		if qf.storage != nil {
 			qf.storage.Swap(uint(dq), value)
 		}
-		return
+		return false
 	}
 
 	// ok, let's find the start
@@ -325,7 +295,7 @@ func (qf *QF) insertByHash(dq, dr, value uint) {
 		if qf.storage != nil {
 			qf.storage.Swap(slot, value)
 		}
-		return
+		return true
 	}
 	qf.entries++
 
@@ -353,6 +323,7 @@ func (qf *QF) insertByHash(dq, dr, value uint) {
 		}
 		shifted = true
 	}
+	return false
 }
 
 func (qf *QF) right(i *uint) {
@@ -392,17 +363,23 @@ func (qf *QF) findStart(dq uint) uint {
 	return dq
 }
 
+// Contains returns whether the byte slice is contained
+// within the quotient filter
 func (qf *QF) Contains(v []byte) bool {
 	found, _ := qf.Lookup(v)
 	return found
 }
 
+// ContainsString returns whether the string is contained
+// within the quotient filter
 func (qf *QF) ContainsString(s string) bool {
 	return qf.Contains(*(*[]byte)(unsafe.Pointer(&s)))
 }
 
-func (qf *QF) Lookup(v []byte) (bool, uint) {
-	return qf.lookupByHash(qf.hash(v))
+// Lookup searches for key and returns whether it
+// exists, and the value stored with it (if any)
+func (qf *QF) Lookup(key []byte) (bool, uint) {
+	return qf.lookupByHash(qf.hash(key))
 }
 
 func (qf *QF) lookupByHash(dq, dr uint) (bool, uint) {
@@ -420,18 +397,20 @@ func (qf *QF) lookupByHash(dq, dr uint) (bool, uint) {
 			return true, value
 		}
 		if sv > dr {
-			return false, 0
+			break
 		}
 		qf.right(&slot)
 		if !qf.continuation(slot) {
-			return false, 0
+			break
 		}
 	}
 	return false, 0
 }
 
-func (qf *QF) LookupString(s string) (bool, uint) {
-	return qf.Lookup(*(*[]byte)(unsafe.Pointer(&s)))
+// LookupString searches for key and returns whether it
+// exists, and the value stored with it (if any)
+func (qf *QF) LookupString(key string) (bool, uint) {
+	return qf.Lookup(*(*[]byte)(unsafe.Pointer(&key)))
 }
 
 func (qf *QF) hash(v []byte) (q, r uint) {
