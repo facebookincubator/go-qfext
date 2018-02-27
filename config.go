@@ -28,7 +28,7 @@ type RepresentationConfig struct {
 var DefaultRepresentationConfig = RepresentationConfig{
 	RemainderAllocFn: BitPackedVectorAllocate,
 	StorageAllocFn:   BitPackedVectorAllocate,
-	HashFn:           fnvhash,
+	HashFn:           murmurhash64,
 }
 
 type Config struct {

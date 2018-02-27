@@ -2,11 +2,9 @@ package qf
 
 import (
 	"bytes"
-	"hash/fnv"
 	"math/bits"
 	"testing"
 
-	"github.com/OneOfOne/xxhash"
 	murmur "github.com/aviddiviner/go-murmur"
 	"github.com/stretchr/testify/assert"
 	"github.com/willf/bloom"
@@ -387,9 +385,7 @@ func TestCheckHashes(t *testing.T) {
 	for _, s := range testStrings {
 		qf.InsertString(s, 0)
 		assert.NoError(t, qf.CheckConsistency())
-		hash := fnv.New64()
-		hash.Write([]byte(s))
-		hv := hash.Sum64()
+		hv := murmur.MurmurHash64A([]byte(s), 0)
 		expected[uint(hv)] = struct{}{}
 	}
 	assert.NoError(t, qf.CheckConsistency())
@@ -484,31 +480,11 @@ func BenchmarkUnpackedQuotientFilterLookup(b *testing.B) {
 	}
 }
 
-func BenchmarkUnpackedQuotientFilterLookupWithMurmur(b *testing.B) {
+func BenchmarkUnpackedQuotientFilterLookupWithFNV(b *testing.B) {
 	c := DetermineSize(uint(len(testStrings)), 0)
 	c.Representation.RemainderAllocFn = UnpackedVectorAllocate
-	c.Representation.HashFn = func(v []byte) uint {
-		return uint(murmur.MurmurHash64A(v, 0))
-	}
-	qf := NewWithConfig(c)
-	for _, s := range testStrings {
-		qf.InsertString(s, 0)
-	}
+	c.Representation.HashFn = fnvhash
 
-	numStrings := len(testStrings)
-
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
-		qf.ContainsString(testStrings[n%numStrings])
-	}
-}
-
-func BenchmarkPackedQuotientFilterLookupWithXXhash(b *testing.B) {
-	c := DetermineSize(uint(len(testStrings)), 0)
-	c.Representation.HashFn = func(v []byte) uint {
-		return uint(xxhash.Checksum64(v))
-	}
 	qf := NewWithConfig(c)
 	for _, s := range testStrings {
 		qf.InsertString(s, 0)
@@ -539,11 +515,9 @@ func BenchmarkPackedQuotientFilterLookup(b *testing.B) {
 	}
 }
 
-func BenchmarkPackedQuotientFilterLookupWithMurmur(b *testing.B) {
+func BenchmarkPackedQuotientFilterLookupWithFNV(b *testing.B) {
 	c := DetermineSize(uint(len(testStrings)), 0)
-	c.Representation.HashFn = func(v []byte) uint {
-		return uint(murmur.MurmurHash64A(v, 0))
-	}
+	c.Representation.HashFn = fnvhash
 	qf := NewWithConfig(c)
 	for _, s := range testStrings {
 		qf.InsertString(s, 0)

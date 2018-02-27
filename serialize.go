@@ -117,8 +117,11 @@ func (qf *QF) ReadFrom(stream io.Reader) (i int64, err error) {
 		}
 	}
 
-	// overwrite myself
+	// overwrite myself, preserve the representation paramters
+	// in the instance.
+	rep := qf.config.Representation
 	*qf = nqf
+	qf.config.Representation = rep
 
 	return
 }

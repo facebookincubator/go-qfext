@@ -434,21 +434,6 @@ func (qf *QF) LookupString(s string) (bool, uint) {
 	return qf.Lookup(*(*[]byte)(unsafe.Pointer(&s)))
 }
 
-const (
-	offset64 = uint(14695981039346656037)
-	prime64  = uint(1099511628211)
-)
-
-func fnvhash(v []byte) uint {
-	// inline fnv 64
-	hv := offset64
-	for _, c := range v {
-		hv *= prime64
-		hv ^= uint(c)
-	}
-	return hv
-}
-
 func (qf *QF) hash(v []byte) (q, r uint) {
 	hv := qf.hashfn(v)
 	dq := hv >> qf.rBits
