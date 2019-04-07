@@ -1,2 +1,3 @@
-# go-fastcqf
-a fast counting quotient filter implementation in golang
+# go-qfext
+
+A fast counting quotient filter implementation in golang.
