@@ -108,7 +108,7 @@ func (qf *QF) eachHashValue(cb func(uint, uint)) {
 // sizing and no external storage configured.
 func New() *QF {
 	return NewWithConfig(Config{
-		QBits: DefaultQBits,
+		QBits:                 DefaultQBits,
 		BitsOfStoragePerEntry: 0,
 	})
 }
@@ -218,10 +218,17 @@ func (qf *QF) countEntries() (count uint) {
 	return
 }
 
-// InsertString stores the key (string) value in the quotient filter
-// it returns whether a value already existed behind the hash key for s.
-func (qf *QF) InsertString(s string, value uint) bool {
-	return qf.Insert(*(*[]byte)(unsafe.Pointer(&s)), value)
+// InsertStringWithValue stores the string key and an associated
+// integer value in the quotient filter it returns whether the
+// key was already present in the quotient filter.
+func (qf *QF) InsertStringWithValue(s string, value uint) bool {
+	return qf.InsertWithValue(*(*[]byte)(unsafe.Pointer(&s)), value)
+}
+
+// InsertString stores the string key in the quotient filter and
+// returns whether this string was already present
+func (qf *QF) InsertString(s string) bool {
+	return qf.InsertStringWithValue(s, 0)
 }
 
 func (qf *QF) double() {
@@ -242,14 +249,20 @@ func (qf *QF) double() {
 	*qf = *cpy
 }
 
-// Insert stores the key (byte slice) and value in the quotient filter
-// it returns whether a value already existed behind the hash key for s.
-func (qf *QF) Insert(v []byte, value uint) (update bool) {
+// InsertWithValue stores the key (byte slice) and an integer value in
+// the quotient filter.  It returns whether a value already existed.
+func (qf *QF) InsertWithValue(v []byte, value uint) (update bool) {
 	if qf.maxEntries <= qf.entries {
 		qf.double()
 	}
 	dq, dr := qf.hash(v)
 	return qf.insertByHash(uint(dq), uint(dr), value)
+}
+
+// Insert stores the key (byte slice) in the quotient filter it
+// returns whether it already existed
+func (qf *QF) Insert(v []byte) (update bool) {
+	return qf.InsertWithValue(v, 0)
 }
 
 func (qf *QF) insertByHash(dq, dr, value uint) bool {

@@ -330,7 +330,7 @@ func TestBasic(t *testing.T) {
 	c := DetermineSize(uint(len(testStrings)), 4)
 	qf := NewWithConfig(c)
 	for _, s := range testStrings {
-		qf.InsertString(s, 0)
+		qf.InsertString(s)
 		if !assert.True(t, qf.ContainsString(s), "%q missing", s) {
 			return
 		}
@@ -346,7 +346,7 @@ func TestBasic(t *testing.T) {
 func TestDoubling(t *testing.T) {
 	qf := New()
 	for _, s := range testStrings {
-		qf.InsertString(s, 0)
+		qf.InsertString(s)
 		assert.True(t, qf.ContainsString(s), "%q missing after insertion", s)
 	}
 	for _, s := range testStrings {
@@ -357,7 +357,7 @@ func TestDoubling(t *testing.T) {
 func TestSerialization(t *testing.T) {
 	qf := New()
 	for _, s := range testStrings {
-		qf.InsertString(s, 0)
+		qf.InsertString(s)
 		assert.True(t, qf.ContainsString(s), "%q missing after insertion", s)
 	}
 	var buf bytes.Buffer
@@ -376,13 +376,13 @@ func TestSerialization(t *testing.T) {
 
 func TestSerializationExternal(t *testing.T) {
 	qf := NewWithConfig(Config{
-		QBits: 1,
+		QBits:                 1,
 		BitsOfStoragePerEntry: uint(64 - bits.LeadingZeros64(uint64(len(testStrings)))),
 	})
 	last := ""
 	for i, s := range testStrings {
 		if s != last {
-			qf.InsertString(s, uint(i))
+			qf.InsertStringWithValue(s, uint(i))
 			found, val := qf.LookupString(s)
 			assert.True(t, found)
 			assert.Equal(t, val, uint(i))
@@ -422,7 +422,7 @@ func TestCheckHashes(t *testing.T) {
 	qf := NewWithConfig(c)
 	expected := map[uint]struct{}{}
 	for _, s := range testStrings {
-		qf.InsertString(s, 0)
+		qf.InsertString(s)
 		assert.NoError(t, qf.checkConsistency())
 		hv := murmur.MurmurHash64A([]byte(s), 0)
 		expected[uint(hv)] = struct{}{}
@@ -448,17 +448,17 @@ func TestCheckHashes(t *testing.T) {
 
 func TestExternalStorage(t *testing.T) {
 	qf := NewWithConfig(Config{
-		QBits: 2,
+		QBits:                 2,
 		BitsOfStoragePerEntry: uint(64 - bits.LeadingZeros64(uint64(len(testStrings)))),
 	})
-	qf.InsertString("hi mom", 42)
+	qf.InsertStringWithValue("hi mom", 42)
 	found, val := qf.LookupString("hi mom")
 	assert.True(t, found)
 	assert.Equal(t, val, uint(42))
 	last := ""
 	for i, s := range testStrings {
 		if s != last {
-			qf.InsertString(s, uint(i))
+			qf.InsertStringWithValue(s, uint(i))
 			found, val := qf.LookupString(s)
 			assert.True(t, found)
 			assert.Equal(t, val, uint(i))
@@ -507,7 +507,7 @@ func BenchmarkUnpackedQuotientFilterLookup(b *testing.B) {
 	c.Representation.RemainderAllocFn = UnpackedVectorAllocate
 	qf := NewWithConfig(c)
 	for _, s := range testStrings {
-		qf.InsertString(s, 0)
+		qf.InsertString(s)
 	}
 
 	numStrings := len(testStrings)
@@ -526,7 +526,7 @@ func BenchmarkUnpackedQuotientFilterLookupWithFNV(b *testing.B) {
 
 	qf := NewWithConfig(c)
 	for _, s := range testStrings {
-		qf.InsertString(s, 0)
+		qf.InsertString(s)
 	}
 
 	numStrings := len(testStrings)
@@ -542,7 +542,7 @@ func BenchmarkPackedQuotientFilterLookup(b *testing.B) {
 	c := DetermineSize(uint(len(testStrings)), 0)
 	qf := NewWithConfig(c)
 	for _, s := range testStrings {
-		qf.InsertString(s, 0)
+		qf.InsertString(s)
 	}
 
 	numStrings := len(testStrings)
@@ -559,7 +559,7 @@ func BenchmarkPackedQuotientFilterLookupWithFNV(b *testing.B) {
 	c.Representation.HashFn = fnvhash
 	qf := NewWithConfig(c)
 	for _, s := range testStrings {
-		qf.InsertString(s, 0)
+		qf.InsertString(s)
 	}
 
 	numStrings := len(testStrings)
@@ -575,7 +575,7 @@ func BenchmarkQuotientFilterLookupWithExternalStorage(b *testing.B) {
 	c := DetermineSize(uint(len(testStrings)), 15)
 	qf := NewWithConfig(c)
 	for i, s := range testStrings {
-		qf.InsertString(s, uint(i))
+		qf.InsertStringWithValue(s, uint(i))
 	}
 
 	numStrings := len(testStrings)

@@ -14,7 +14,7 @@ var _ Vector = (*unpacked)(nil)
 // serialization format (i.e. between architectures)
 func UnpackedVectorAllocate(bits uint, size uint) Vector {
 	if bits > BitsPerWord {
-		panic(fmt.Sprintf("bit size of %d is greater than word size of %s, not supported",
+		panic(fmt.Sprintf("bit size of %d is greater than word size of %d, not supported",
 			bits, BitsPerWord))
 	}
 	arr := make(unpacked, size)
