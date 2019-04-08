@@ -206,10 +206,6 @@ func (qf *QF) shifted(slot uint) bool {
 	return qf.metadata.Test(slot*3 + 2)
 }
 
-func (qf *QF) setShifted(slot uint) {
-	qf.metadata.Set(slot*3 + 2)
-}
-
 func (qf *QF) setShiftedTo(slot uint, to bool) {
 	qf.metadata.SetTo(slot*3+2, to)
 }
