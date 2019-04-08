@@ -40,38 +40,43 @@ func (qf *QF) Len() uint {
 
 // DebugDump prints a textual representation of the quotient filter
 // to stdout
-func (qf *QF) DebugDump() {
-	fmt.Printf("\n  bucket  O C S remainder->\n")
-	skipped := 0
-	for i := uint(0); i < qf.size; i++ {
-		o, c, s := 0, 0, 0
-		md := qf.read(i)
-		if md.occupied {
-			o = 1
-		}
-		if md.continuation {
-			c = 1
-		}
-		if md.shifted {
-			s = 1
-		}
-		if md.empty() {
-			skipped++
-		} else {
-			if skipped > 0 {
-				fmt.Printf("          ...\n")
-				skipped = 0
+func (qf *QF) DebugDump(full bool) {
+	fmt.Printf("\nquotient filter is %d large (%d q bits) with %d entries (loaded %0.3f)\n",
+		qf.size, qf.qBits, qf.entries, float64(qf.entries)/float64(qf.size))
+
+	if full {
+		fmt.Printf("  bucket  O C S remainder->\n")
+		skipped := 0
+		for i := uint(0); i < qf.size; i++ {
+			o, c, s := 0, 0, 0
+			md := qf.read(i)
+			if md.occupied {
+				o = 1
 			}
-			r := qf.remainders.Get(i)
-			v := uint(0)
-			if qf.storage != nil {
-				v = qf.storage.Get(i)
+			if md.continuation {
+				c = 1
 			}
-			fmt.Printf("%8d  %d %d %d %x (%d)\n", i, o, c, s, r, v)
+			if md.shifted {
+				s = 1
+			}
+			if md.empty() {
+				skipped++
+			} else {
+				if skipped > 0 {
+					fmt.Printf("          ...\n")
+					skipped = 0
+				}
+				r := qf.remainders.Get(i)
+				v := uint(0)
+				if qf.storage != nil {
+					v = qf.storage.Get(i)
+				}
+				fmt.Printf("%8d  %d %d %d %x (%d)\n", i, o, c, s, r, v)
+			}
 		}
-	}
-	if skipped > 0 {
-		fmt.Printf("          ...\n")
+		if skipped > 0 {
+			fmt.Printf("          ...\n")
+		}
 	}
 }
 

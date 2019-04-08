@@ -31,7 +31,7 @@ func main() {
 	}
 
 	// Dump the whole quotient filter in textual form
-	qf.DebugDump()
+	qf.DebugDump(true)
 
 	// Serialize the quotient filter and report size
 	buf := bytes.NewBuffer([]byte{})
