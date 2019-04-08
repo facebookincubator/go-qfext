@@ -2,9 +2,12 @@ package qf
 
 import "fmt"
 
-// DefaultQBits is the initial number of quotient bits when no explicit
-// configuration is provided
-const DefaultQBits = 4
+// MinQBits is the initial number of quotient bits when no explicit
+// configuration is provided, and the minimum number of qbits supported
+//
+// implementation note:  MinQBits must be greater than 3 as we require
+// 3 bits for quotient filter book keeping
+const MinQBits = 4
 
 // DetermineSize generates a Config struct appropriate for a
 // quotient filter that can hold numberOfEntites, while remaining under
@@ -17,7 +20,7 @@ func DetermineSize(numberOfEntries uint, bitsOfStoragePerEntry uint) Config {
 		bits++
 	}
 	return Config{
-		QBits: bits,
+		QBits:                 bits,
 		BitsOfStoragePerEntry: bitsOfStoragePerEntry,
 	}
 }

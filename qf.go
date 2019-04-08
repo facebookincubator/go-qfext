@@ -10,8 +10,6 @@ import (
 	"fmt"
 	"math"
 	"unsafe"
-
-	"github.com/willf/bitset"
 )
 
 // MaxLoadingFactor specifies the boundary at which we will double
@@ -23,8 +21,7 @@ const MaxLoadingFactor = 0.65
 type QF struct {
 	entries      uint
 	size         uint
-	metadata     *bitset.BitSet
-	remainders   Vector
+	filter       Vector
 	storage      Vector
 	rBits, qBits uint
 	rMask        uint
@@ -49,24 +46,24 @@ func (qf *QF) DebugDump(full bool) {
 		skipped := 0
 		for i := uint(0); i < qf.size; i++ {
 			o, c, s := 0, 0, 0
-			md := qf.read(i)
-			if md.occupied {
+			sd := qf.read(i)
+			if sd.occupied() {
 				o = 1
 			}
-			if md.continuation {
+			if sd.continuation() {
 				c = 1
 			}
-			if md.shifted {
+			if sd.shifted() {
 				s = 1
 			}
-			if md.empty() {
+			if sd.empty() {
 				skipped++
 			} else {
 				if skipped > 0 {
 					fmt.Printf("          ...\n")
 					skipped = 0
 				}
-				r := qf.remainders.Get(i)
+				r := sd.r()
 				v := uint(0)
 				if qf.storage != nil {
 					v = qf.storage.Get(i)
@@ -86,21 +83,21 @@ func (qf *QF) eachHashValue(cb func(uint, uint)) {
 	stack := []uint{}
 	// let's start from an unshifted value
 	start := uint(0)
-	for qf.read(start).shifted {
+	for qf.read(start).shifted() {
 		qf.right(&start)
 	}
 	end := start
 	qf.left(&end)
 	for i := start; true; qf.right(&i) {
-		md := qf.read(i)
-		if !md.continuation && len(stack) > 0 {
+		sd := qf.read(i)
+		if !sd.continuation() && len(stack) > 0 {
 			stack = stack[1:]
 		}
-		if md.occupied {
+		if sd.occupied() {
 			stack = append(stack, i)
 		}
 		if len(stack) > 0 {
-			r := qf.remainders.Get(i)
+			r := sd.r()
 			cb((stack[0]<<qf.rBits)|(r&qf.rMask), i)
 		}
 		if i == end {
@@ -113,7 +110,7 @@ func (qf *QF) eachHashValue(cb func(uint, uint)) {
 // sizing and no external storage configured.
 func New() *QF {
 	return NewWithConfig(Config{
-		QBits:                 DefaultQBits,
+		QBits:                 MinQBits,
 		BitsOfStoragePerEntry: 0,
 	})
 }
@@ -133,10 +130,14 @@ func NewWithConfig(c Config) *QF {
 	}
 	qf.hashfn = c.Representation.HashFn
 
-	qf.initForQuotientBits(c.QBits)
+	qbits := c.QBits
+	if qbits < MinQBits {
+		qbits = MinQBits
+	}
 
-	qf.metadata = bitset.New(qf.size * 3)
-	qf.remainders = c.Representation.RemainderAllocFn(BitsPerWord-c.QBits, qf.size)
+	qf.initForQuotientBits(qbits)
+
+	qf.filter = c.Representation.RemainderAllocFn(3+BitsPerWord-qbits, qf.size)
 	if c.BitsOfStoragePerEntry > 0 {
 		qf.storage = c.Representation.StorageAllocFn(c.BitsOfStoragePerEntry, qf.size)
 	}
@@ -164,50 +165,73 @@ func (qf *QF) initForQuotientBits(qBits uint) {
 	qf.maxEntries = uint(math.Ceil(float64(qf.size) * MaxLoadingFactor))
 }
 
-type metadata struct {
-	occupied     bool
-	continuation bool
-	shifted      bool
+type slotData uint
+
+const (
+	occupiedMask     = slotData(1)
+	continuationMask = slotData(1 << 1)
+	shiftedMask      = slotData(1 << 2)
+	bookkeepingMask  = slotData(0x7)
+)
+
+func (sd slotData) empty() bool {
+	return (sd & bookkeepingMask) == 0
 }
 
-func (md metadata) empty() bool {
-	return !md.occupied && !md.continuation && !md.shifted
+func (sd slotData) occupied() bool {
+	return (sd & occupiedMask) != 0
 }
 
-func (qf *QF) read(slot uint) metadata {
-	return metadata{
-		occupied:     qf.metadata.Test(slot * 3),
-		continuation: qf.metadata.Test(slot*3 + 1),
-		shifted:      qf.metadata.Test(slot*3 + 2),
+func (sd *slotData) setOccupied(on bool) {
+	if on {
+		*sd |= occupiedMask
+	} else {
+		*sd &= ^occupiedMask
 	}
 }
 
-func (qf *QF) occupied(slot uint) bool {
-	return qf.metadata.Test(slot * 3)
+func (sd slotData) continuation() bool {
+	return (sd & continuationMask) != 0
 }
 
-func (qf *QF) setOccupied(slot uint) {
-	qf.metadata.Set(slot * 3)
+func (sd *slotData) setContinuation(on bool) {
+	if on {
+		*sd |= continuationMask
+	} else {
+		*sd &= ^continuationMask
+	}
 }
 
-func (qf *QF) continuation(slot uint) bool {
-	return qf.metadata.Test(slot*3 + 1)
+func (sd slotData) shifted() bool {
+	return (sd & shiftedMask) != 0
 }
 
-func (qf *QF) setContinuation(slot uint) {
-	qf.metadata.Set(slot*3 + 1)
+func (sd *slotData) setShifted(on bool) {
+	if on {
+		*sd |= shiftedMask
+	} else {
+		*sd &= ^shiftedMask
+	}
 }
 
-func (qf *QF) setContinuationTo(slot uint, to bool) {
-	qf.metadata.SetTo(slot*3+1, to)
+func (sd slotData) r() uint {
+	return uint(sd >> 3)
 }
 
-func (qf *QF) shifted(slot uint) bool {
-	return qf.metadata.Test(slot*3 + 2)
+func (sd *slotData) setR(r uint) {
+	*sd = (*sd & bookkeepingMask) | slotData(r<<3)
 }
 
-func (qf *QF) setShiftedTo(slot uint, to bool) {
-	qf.metadata.SetTo(slot*3+2, to)
+func (qf *QF) read(slot uint) slotData {
+	return slotData(qf.filter.Get(slot))
+}
+
+func (qf *QF) write(slot uint, sd slotData) {
+	qf.filter.Set(slot, uint(sd))
+}
+
+func (qf *QF) swap(slot uint, sd slotData) slotData {
+	return slotData(qf.filter.Swap(slot, uint(sd)))
 }
 
 func (qf *QF) countEntries() (count uint) {
@@ -267,44 +291,53 @@ func (qf *QF) Insert(v []byte) (update bool) {
 }
 
 func (qf *QF) insertByHash(dq, dr, value uint) bool {
-	md := qf.read(uint(dq))
+	sd := qf.read(dq)
 
-	// if the occupied bit is set for this dq, then we are
-	// extending an existing run
-	extendingRun := md.occupied
-
-	qf.setOccupied(uint(dq))
-
-	// easy case!
-	if md.empty() {
+	// case 1, the slot is empty
+	if sd.empty() {
 		qf.entries++
-		qf.remainders.Set(uint(dq), dr)
+		sd.setOccupied(true)
+		sd.setR(dr)
+		qf.write(uint(dq), sd)
 		if qf.storage != nil {
-			qf.storage.Set(uint(dq), value)
+			qf.storage.Set(dq, value)
 		}
 		return false
 	}
 
-	// ok, let's find the start
-	runStart := qf.findStart(uint(dq))
+	// if the occupied bit is set for this dq, then we are
+	// extending an existing run
+	extendingRun := sd.occupied()
 
+	// mark occupied if we are not extending a run
+	if !extendingRun {
+		sd.setOccupied(true)
+		qf.write(dq, sd)
+	}
+
+	// ok, let's find the start
+	runStart := dq
+	if sd.shifted() {
+		runStart = qf.findStart(dq)
+	}
 	// now let's find the spot within the run
 	slot := runStart
 	if extendingRun {
-		md = qf.read(slot)
+		sd = qf.read(slot)
 		for {
-			if md.empty() || qf.remainders.Get(slot) >= dr {
+			if sd.empty() || sd.r() >= dr {
 				break
 			}
 			qf.right(&slot)
-			md = qf.read(slot)
-			if !md.continuation {
+			sd = qf.read(slot)
+			if !sd.continuation() {
 				break
 			}
 		}
 	}
 
-	if dr == qf.remainders.Get(slot) {
+	// case 2, the value is already in the filter
+	if dr == sd.r() {
 		// update value
 		if qf.storage != nil {
 			qf.storage.Set(slot, value)
@@ -313,28 +346,33 @@ func (qf *QF) insertByHash(dq, dr, value uint) bool {
 	}
 	qf.entries++
 
+	// case 3: we have to insert into an existing run
 	// we are writing remainder <dr> into <slot>
-
-	// ensure the continuation bit is set correctly
 	shifted := (slot != uint(dq))
-	md.continuation = slot != runStart
+	continuation := slot != runStart
 
 	for {
-		dr = qf.remainders.Swap(slot, dr)
+		// dr -> the remainder to write here
 		if qf.storage != nil {
 			value = qf.storage.Swap(slot, value)
 		}
-		nxt := qf.read(slot)
-		if (slot == runStart) && extendingRun {
-			nxt.continuation = true
-		}
-		qf.setContinuationTo(uint(slot), md.continuation)
-		qf.setShiftedTo(uint(slot), shifted)
-		qf.right(&slot)
-		md = nxt
-		if md.empty() {
+		var new slotData
+		new.setShifted(shifted)
+		new.setContinuation(continuation)
+		old := qf.read(slot)
+		new.setOccupied(old.occupied())
+		new.setR(dr)
+		qf.write(slot, new)
+		if old.empty() {
 			break
 		}
+		if ((slot == runStart) && extendingRun) || old.continuation() {
+			continuation = true
+		} else {
+			continuation = false
+		}
+		dr = old.r()
+		qf.right(&slot)
 		shifted = true
 	}
 	return false
@@ -358,19 +396,20 @@ func (qf *QF) findStart(dq uint) uint {
 	// scan left to figure out how much to skip
 	runs, complete := 1, 0
 	for i := dq; true; qf.left(&i) {
-		if !qf.continuation(uint(i)) {
+		sd := qf.read(i)
+		if !sd.continuation() {
 			complete++
 		}
-		if !qf.shifted(i) {
+		if !sd.shifted() {
 			break
-		} else if qf.occupied(i) {
+		} else if sd.occupied() {
 			runs++
 		}
 	}
 	// scan right to find our run
 	for runs > complete {
 		qf.right(&dq)
-		if !qf.continuation(dq) {
+		if !qf.read(dq).continuation() {
 			complete++
 		}
 	}
@@ -397,24 +436,29 @@ func (qf *QF) Lookup(key []byte) (bool, uint) {
 }
 
 func (qf *QF) lookupByHash(dq, dr uint) (bool, uint) {
-	if !qf.occupied(uint(dq)) {
+	sd := qf.read(dq)
+	if !sd.occupied() {
 		return false, 0
 	}
-	slot := qf.findStart(uint(dq))
+	slot := dq
+	if sd.shifted() {
+		slot = qf.findStart(dq)
+		sd = qf.read(slot)
+	}
 	for {
-		sv := qf.remainders.Get(slot)
-		if sv == dr {
+		if sd.r() == dr {
 			value := uint(0)
 			if qf.storage != nil {
 				value = qf.storage.Get(slot)
 			}
 			return true, value
 		}
-		if sv > dr {
+		if sd.r() > dr {
 			break
 		}
 		qf.right(&slot)
-		if !qf.continuation(slot) {
+		sd = qf.read(slot)
+		if !sd.continuation() {
 			break
 		}
 	}

@@ -37,17 +37,25 @@ On a modern osx laptop:
 ```
 $ go test --bench="Bench"
 
-// bloom filter timing for comparison
-BenchmarkBloomFilter-8                               	 5000000	       255 ns/op
+// bloom filter timing
+BenchmarkBloomFilter-8                               	 5000000	       248 ns/op
 
 // native golang map lookup
-BenchmarkMapLookup-8                                 	100000000	        18.6 ns/op
-BenchmarkUnpackedQuotientFilterLookup-8              	50000000	        33.8 ns/op
+BenchmarkMapLookup-8                                 	100000000	        17.5 ns/op
 
-// A lookup in a packed quotient filter is 6.5x faster than a bloom filter, and about
-// twice as slow as a native golang map
-BenchmarkPackedQuotientFilterLookup-8                	30000000	        38.7 ns/op
-BenchmarkQuotientFilterLookupWithExternalStorage-8   	30000000	        43.4 ns/op
+// a lookup in a non-bitpacked quotient filter is only about 70% slower than native
+// golang maps
+BenchmarkUnpackedQuotientFilterLookup-8              	50000000	        29.0 ns/op
+
+// Bitpacking costs a bit but saves on space.  The larger the filter, the more you
+// save.
+BenchmarkPackedQuotientFilterLookup-8                	50000000	        37.6 ns/op
+
+// External storage uses the same representation as the filter itself
+BenchmarkQuotientFilterLookupWithExternalStorage-8   	30000000	        43.5 ns/op
+
+// quotient filter loading assuming a pre-sized quotient filter (no doubling)
+BenchmarkLoading-8                                   	10000000	       188 ns/op
 ```
 
 

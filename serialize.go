@@ -5,14 +5,12 @@ import (
 	"fmt"
 	"io"
 	"unsafe"
-
-	"github.com/willf/bitset"
 )
 
 // RepresentationVersion is a version number for the
 // on disk representation format.  Any time incompatible
 // changes are made, it is bumped
-const RepresentationVersion = uint64(0x0002)
+const RepresentationVersion = uint64(0x0003)
 
 // Header describes a serialized quotient filter
 type Header struct {
@@ -44,14 +42,7 @@ func (qf *QF) WriteTo(stream io.Writer) (i int64, err error) {
 	}
 	i += int64(unsafe.Sizeof(uint64(qf.config.BitsOfStoragePerEntry)))
 
-	var x int64
-	x, err = qf.metadata.WriteTo(stream)
-	i += x
-	if err != nil {
-		return
-	}
-
-	x, err = qf.remainders.WriteTo(stream)
+	x, err := qf.filter.WriteTo(stream)
 	i += x
 	if err != nil {
 		return
@@ -102,15 +93,8 @@ func (qf *QF) ReadFrom(stream io.Reader) (i int64, err error) {
 	nqf.entries = uint(entries)
 	nqf.initForQuotientBits(uint(qBits))
 
-	var n int64
-	nqf.metadata = bitset.New(0)
-	if n, err = nqf.metadata.ReadFrom(stream); err != nil {
-		return
-	}
-	i += n
-
-	nqf.remainders = qf.config.Representation.RemainderAllocFn(0, 0)
-	n, err = nqf.remainders.ReadFrom(stream)
+	nqf.filter = qf.config.Representation.RemainderAllocFn(0, 0)
+	n, err := nqf.filter.ReadFrom(stream)
 	i += n
 	if err != nil {
 		return

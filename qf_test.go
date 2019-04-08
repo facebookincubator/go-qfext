@@ -24,7 +24,7 @@ func (qf *QF) checkConsistency() error {
 
 	for i := uint(0); i < qf.size; i++ {
 		md := qf.read(i)
-		if !md.occupied {
+		if !md.occupied() {
 			continue
 		}
 		dq := i
@@ -38,7 +38,7 @@ func (qf *QF) checkConsistency() error {
 			usage[runStart] = dq
 			qf.right(&runStart)
 			md := qf.read(runStart)
-			if !md.continuation {
+			if !md.continuation() {
 				break
 			}
 		}
@@ -348,7 +348,11 @@ func TestDoubling(t *testing.T) {
 	qf := New()
 	for _, s := range testStrings {
 		qf.InsertString(s)
-		assert.True(t, qf.ContainsString(s), "%q missing after insertion", s)
+		qf.checkConsistency()
+		if !assert.True(t, qf.ContainsString(s), "%q missing after insertion", s) {
+			qf.DebugDump(true)
+			return
+		}
 	}
 	for _, s := range testStrings {
 		assert.True(t, qf.ContainsString(s), "%q missing after construction", s)
@@ -411,6 +415,11 @@ func TestSerializationExternal(t *testing.T) {
 		}
 		last = s
 	}
+}
+
+func TestExpectedLoading(t *testing.T) {
+	c := DetermineSize(128, 0)
+	assert.Equal(t, 50., c.ExpectedLoading(128))
 }
 
 func TestSizeEstimate(t *testing.T) {
@@ -589,7 +598,8 @@ func BenchmarkQuotientFilterLookupWithExternalStorage(b *testing.B) {
 }
 
 func BenchmarkLoading(b *testing.B) {
-	qf := New()
+	qf := NewWithConfig(DetermineSize(uint(b.N), 0))
+
 	b.ResetTimer()
 	buf := make([]byte, 8)
 	for n := 0; n < b.N; n++ {
