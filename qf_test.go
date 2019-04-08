@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"math/bits"
+	"strconv"
 	"testing"
 
 	murmur "github.com/aviddiviner/go-murmur"
@@ -584,5 +585,15 @@ func BenchmarkQuotientFilterLookupWithExternalStorage(b *testing.B) {
 
 	for n := 0; n < b.N; n++ {
 		qf.LookupString(testStrings[n%numStrings])
+	}
+}
+
+func BenchmarkLoading(b *testing.B) {
+	qf := New()
+	b.ResetTimer()
+	buf := make([]byte, 8)
+	for n := 0; n < b.N; n++ {
+		x := strconv.AppendInt(buf[:0], int64(n), 10)
+		qf.Insert(x)
 	}
 }
