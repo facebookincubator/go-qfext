@@ -278,9 +278,9 @@ func (qf *QF) insertByHash(dq, dr, value uint) bool {
 	// easy case!
 	if md.empty() {
 		qf.entries++
-		qf.remainders.Swap(uint(dq), dr)
+		qf.remainders.Set(uint(dq), dr)
 		if qf.storage != nil {
-			qf.storage.Swap(uint(dq), value)
+			qf.storage.Set(uint(dq), value)
 		}
 		return false
 	}
@@ -307,7 +307,7 @@ func (qf *QF) insertByHash(dq, dr, value uint) bool {
 	if dr == qf.remainders.Get(slot) {
 		// update value
 		if qf.storage != nil {
-			qf.storage.Swap(slot, value)
+			qf.storage.Set(slot, value)
 		}
 		return true
 	}
