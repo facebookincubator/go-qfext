@@ -419,14 +419,16 @@ func (qf *QF) findStart(dq uint) uint {
 // Contains returns whether the byte slice is contained
 // within the quotient filter
 func (qf *QF) Contains(v []byte) bool {
-	found, _ := qf.Lookup(v)
+	found, _ := qf.lookupByHash(qf.hash(v))
 	return found
 }
 
 // ContainsString returns whether the string is contained
+
 // within the quotient filter
 func (qf *QF) ContainsString(s string) bool {
-	return qf.Contains(*(*[]byte)(unsafe.Pointer(&s)))
+	found, _ := qf.lookupByHash(qf.hash(*(*[]byte)(unsafe.Pointer(&s))))
+	return found
 }
 
 // Lookup searches for key and returns whether it
@@ -468,7 +470,7 @@ func (qf *QF) lookupByHash(dq, dr uint) (bool, uint) {
 // LookupString searches for key and returns whether it
 // exists, and the value stored with it (if any)
 func (qf *QF) LookupString(key string) (bool, uint) {
-	return qf.Lookup(*(*[]byte)(unsafe.Pointer(&key)))
+	return qf.lookupByHash(qf.hash((*(*[]byte)(unsafe.Pointer(&key)))))
 }
 
 func (qf *QF) hash(v []byte) (q, r uint) {

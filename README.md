@@ -23,7 +23,7 @@ Specifically qfext:
   3. supports "external storage".  You may associate a variable width integer with each
      key.
   4. supports pluggable storage - Both a fast bit packed implementation (non-portable) and
-     a unpacked (portable) implementation is implemented.  This storage is used both for 
+     a unpacked (portable) implementation is provided.  This storage is used both for 
      the remainder store and the external storage 
 
 ## Example Usage
@@ -39,7 +39,7 @@ func main() {
 }
 ```
 
-## Performance - Time
+## Performance - Compute
 
 On a modern osx laptop:
 
@@ -47,24 +47,24 @@ On a modern osx laptop:
 $ go test --bench="Bench"
 
 // bloom filter timing
-BenchmarkBloomFilter-8                               	 5000000	       248 ns/op
+BenchmarkBloomFilter-8                                   5000000               256 ns/op
 
 // native golang map lookup
-BenchmarkMapLookup-8                                 	100000000	        17.5 ns/op
+BenchmarkMapLookup-8                                    100000000               18.5 ns/op
 
-// a lookup in a non-bitpacked quotient filter is only about 70% slower than native
+// a lookup in a non-bitpacked quotient filter is only about 40% slower than native
 // golang maps
-BenchmarkUnpackedQuotientFilterLookup-8              	50000000	        29.0 ns/op
+BenchmarkUnpackedQuotientFilterLookup-8                 50000000                26.1 ns/op
 
 // Bitpacking costs a bit but saves on space.  The larger the filter, the more you
 // save.
-BenchmarkPackedQuotientFilterLookup-8                	50000000	        37.6 ns/op
+BenchmarkPackedQuotientFilterLookup-8                   50000000                35.5 ns/op
 
 // External storage uses the same representation as the filter itself
-BenchmarkQuotientFilterLookupWithExternalStorage-8   	30000000	        43.5 ns/op
+BenchmarkQuotientFilterLookupWithExternalStorage-8	30000000                41.0 ns/op
 
 // quotient filter loading assuming a pre-sized quotient filter (no doubling)
-BenchmarkLoading-8                                   	10000000	       188 ns/op
+BenchmarkLoading-8					10000000               192 ns/op
 ```
 
 ## Performance - Memory
