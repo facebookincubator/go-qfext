@@ -7,6 +7,14 @@ import (
 )
 
 func main() {
+	// helper routines are available to let you size your quotient filter
+	// correctly
+	conf := qfext.DetermineSize(1000000000, 0)
+	fmt.Printf("a billion entry bloom filter would be loaded at %f percent...\n",
+		conf.ExpectedLoading(1000000000),
+	)
+	conf.ExplainIndent("  ")
+
 	data := []string{
 		"red", "yellow", "orange", "blue",
 	}

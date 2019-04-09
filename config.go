@@ -82,7 +82,7 @@ func (c *Config) ExplainIndent(indent string) {
 	fmt.Printf("%s%2d bits needed per bucket for remainder\n", indent, BitsPerWord-c.QBits)
 	fmt.Printf("%s%2d bits metadata per bucket\n", indent, 3)
 	fmt.Printf("%s%2d bits external storage\n", indent, c.BitsOfStoragePerEntry)
-	fmt.Printf("%s   %s model size expected\n", indent, humanBytes(c.BytesRequired()))
+	fmt.Printf("%s   %s storage size expected\n", indent, humanBytes(c.BytesRequired()))
 }
 
 // Explain will print a summary of the configuration to stdout
