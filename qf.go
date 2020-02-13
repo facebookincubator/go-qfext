@@ -267,6 +267,19 @@ func (qf *Filter) InsertString(s string) bool {
 	return qf.InsertStringWithValue(s, 0)
 }
 
+// InsertRawHash inserts a pre-calculated raw hash value with associated
+// external data into the quotient filter.  The hash calculation algorithm
+// must be the very same used internally by the quotient filter, otherwise
+// lookups will fail.  This is a very low level insertion, use with care
+func (qf *Filter) InsertRawHash(hv uint64, value uint64) (update bool) {
+	if qf.maxEntries <= qf.entries {
+		qf.double()
+	}
+	dq := hv >> qf.rBits
+	dr := hv & qf.rMask
+	return qf.insertByHash(dq, dr, value)
+}
+
 func (qf *Filter) double() {
 	// start with a shallow coppy
 	cpy := *qf
