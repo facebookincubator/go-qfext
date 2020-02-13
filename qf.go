@@ -270,6 +270,7 @@ func (qf *Filter) InsertString(s string) bool {
 func (qf *Filter) double() {
 	// start with a shallow coppy
 	cpy := *qf
+	cpy.entries = 0
 	cpy.initForQuotientBits(cpy.qBits + 1)
 	cpy.allocStorage()
 	qf.eachHashValue(func(hv uint64, slot uint64) {
