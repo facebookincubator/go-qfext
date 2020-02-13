@@ -34,7 +34,7 @@ func OpenReadOnlyFromPath(path string) (*Disk, error) {
 		return nil, err
 	}
 	// read header
-	var h qfHeader
+	var h QFHeader
 	if err = binary.Read(rdr, binary.LittleEndian, &h); err != nil {
 		return nil, err
 	}

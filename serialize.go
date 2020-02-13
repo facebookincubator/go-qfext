@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"os"
 	"unsafe"
 )
 
@@ -14,8 +15,8 @@ import (
 // changes are made, it is bumped
 const qfVersion = uint64(0x0004)
 
-// qfHeader describes a serialized quotient filter
-type qfHeader struct {
+// QFHeader describes a serialized quotient filter
+type QFHeader struct {
 	// a version number which changes as the storage representation
 	// changes
 	Version uint64
@@ -32,12 +33,27 @@ type qfHeader struct {
 	BitPacked bool
 }
 
+// ReadHeaderFromPath reads and returns the header from a serialized quotient filter
+// at a specified path
+func ReadHeaderFromPath(path string) (*QFHeader, error) {
+	stream, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer stream.Close()
+	var h QFHeader
+	if err = binary.Read(stream, binary.LittleEndian, &h); err != nil {
+		return nil, err
+	}
+	return &h, nil
+}
+
 // WriteTo allows the quotient filter to be written to a stream
 //
 // WARNING: the default storage format is very fast, but not portable
 // to architectures of differing word length or endianness
 func (qf *Filter) WriteTo(stream io.Writer) (i int64, err error) {
-	h := qfHeader{
+	h := QFHeader{
 		Version:     qfVersion,
 		Entries:     qf.entries,
 		QBits:       uint64(qf.qBits),
@@ -71,7 +87,7 @@ func (qf *Filter) WriteTo(stream io.Writer) (i int64, err error) {
 // WARNING: the default storage format is very fast, but not portable
 // to architectures of differing word length or endianness
 func (qf *Filter) ReadFrom(stream io.Reader) (i int64, err error) {
-	var h qfHeader
+	var h QFHeader
 	if err = binary.Read(stream, binary.LittleEndian, &h); err != nil {
 		return
 	}
