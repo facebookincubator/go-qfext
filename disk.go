@@ -70,9 +70,9 @@ func OpenReadOnlyFromPath(path string) (*Disk, error) {
 	return &ext, nil
 }
 
-// StorageBits reports the number of bits of integer storage associated
+// BitsOfStoragePerEntry reports the number of bits of integer storage associated
 // with each entry in the quotient filter
-func (ext *Disk) StorageBits() uint {
+func (ext *Disk) BitsOfStoragePerEntry() uint {
 	return ext.storageBits
 }
 
