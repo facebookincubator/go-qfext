@@ -375,6 +375,7 @@ func TestSerialization(t *testing.T) {
 			assert.True(t, qf.ContainsString(s), "%q missing after insertion", s)
 		}
 		var buf bytes.Buffer
+		beforeEntries := qf.Len()
 		wt, err := qf.WriteTo(&buf)
 		assert.NoError(t, err)
 		qf = NewWithConfig(Config{
@@ -382,6 +383,7 @@ func TestSerialization(t *testing.T) {
 		})
 		rd, err2 := qf.ReadFrom(&buf)
 		assert.NoError(t, err2)
+		assert.Equal(t, beforeEntries, qf.Len())
 		assert.Equal(t, wt, rd)
 		for _, s := range testStrings {
 			if !assert.True(t, qf.ContainsString(s), "%q missing after construction", s) {

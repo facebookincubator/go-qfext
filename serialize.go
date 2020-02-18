@@ -91,12 +91,12 @@ func (qf *Filter) ReadFrom(stream io.Reader) (i int64, err error) {
 	if err = binary.Read(stream, binary.LittleEndian, &h); err != nil {
 		return
 	}
-	// XXX: pretty sure this isn't correct?
 	i += int64(unsafe.Sizeof(h))
 	if h.Version != qfVersion {
 		return i, fmt.Errorf("incompatible file format: version is %d, expected %d",
 			h.Version, qfVersion)
 	}
+	qf.entries = h.Entries
 	qf.initForQuotientBits(uint(h.QBits))
 	n, err := qf.filter.ReadFrom(stream)
 	i += n
