@@ -1,3 +1,5 @@
+// Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+
 package qf
 
 // Reader is a readable quotient filter.  It is implmeneted by
