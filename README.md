@@ -18,7 +18,7 @@ golang with some nifty features.
 
 Specifically qfext:
   1. uses an optimized / inlined [murmur hash](https://en.wikipedia.org/wiki/MurmurHash).
-  2. is about 6 times faster than a popular [bloom filter implementation]("github.com/willf/bloom") for lookup
+  2. is about 6 times faster than a popular [bloom filter implementation](https://github.com/willf/bloom) for lookup
   3. supports "external storage".  You may associate a variable width integer with each
      key.
   4. supports direct reading of quotient filter from disk for situation where runtime performance is less important
