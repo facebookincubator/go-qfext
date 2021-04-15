@@ -26,7 +26,7 @@ Specifically qfext:
 
 ## License
 
-This package is availabe under the MIT License, Copyright (c) Facebook, See the LICENSE file.
+This package is available under the MIT License, Copyright (c) Facebook, See the LICENSE file.
 
 ## Example Usage
 
