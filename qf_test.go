@@ -12,8 +12,8 @@ import (
 	"testing"
 
 	murmur "github.com/aviddiviner/go-murmur"
+	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/stretchr/testify/assert"
-	"github.com/willf/bloom"
 )
 
 // testing specific consistency checking
