@@ -18,11 +18,9 @@ golang with some nifty features.
 
 Specifically qfext:
   1. uses an optimized / inlined [murmur hash](https://en.wikipedia.org/wiki/MurmurHash).
-  2. is about 6 times faster than a popular [bloom filter implementation](https://github.com/bits-and-blooms/bloom) for lookup
-  3. supports "external storage".  You may associate a variable width integer with each
-     key.
-  4. supports direct reading of quotient filter from disk for situation where runtime performance is less important
-     than ram usage
+  2. is about 4 times faster than a popular [bloom filter implementation](https://github.com/bits-and-blooms/bloom/v3) for lookup
+  3. supports "external storage".  You may associate a variable width integer with each key.
+  4. supports direct reading of quotient filter from disk for situation where runtime performance is less important than ram usage
 
 ## License
 
@@ -43,36 +41,41 @@ func main() {
 
 ## Performance - Compute
 
-On a modern linux machine laptop:
+On a MacBook Pro (13-inch, M1, 2020)
 
 ```
-$ go test --bench="Bench"
+$ go test -run=xxx -bench=.
+
+goos: darwin
+goarch: arm64
+pkg: github.com/facebookincubator/go-qfext
 
 // bloom filter timing
-BenchmarkBloomFilter-24					 3000000	       460 ns/op
+BenchmarkBloomFilter-8                               	13851920	        74.47 ns/op
 
 // native golang map lookup
-BenchmarkMapLookup-24					50000000	        23.5 ns/op
+BenchmarkMapLookup-8                                 	130050450	         9.373 ns/op
 
 // a lookup in a non-bitpacked quotient filter is only about 50% slower than native
 // golang maps
-BenchmarkUnpackedFilterLookup-24			50000000	        35.4 ns/op
+BenchmarkUnpackedFilterLookup-8                      	58248184	        20.43 ns/op
 
 // Bitpacking costs a bit but saves on space.  The larger the filter, the more you
 // save.
-BenchmarkPackedFilterLookup-24				20000000	        55.3 ns/op
+BenchmarkPackedFilterLookup-8                        	38458353	        30.95 ns/op
 
 // External storage uses the same representation as the filter itself
-BenchmarkUnpackedFilterLookupWithExternalStorage-24    	30000000	        40.3 ns/op
+BenchmarkUnpackedFilterLookupWithExternalStorage-8   	47611646	        25.59 ns/op
 
 // quotient filter loading assuming a pre-sized quotient filter (no doubling)
-BenchmarkLoading-24                                    	 20000000          165 ns/op
+BenchmarkLoading-8                                   	14826261	       155.8 ns/op
 
-// opening a 3mb quotient filter, loading into memory
-BenchmarkPackedDeserialize-24				    2000	   1138300 ns/op	 3154209 B/op	      16 allocs/op
+// loading a 2mb serialized quotient filter into memory
+BenchmarkUnpackedDeserialize-8                       	   14174	     83156 ns/op	 2097313 B/op	       6 allocs/op
 
-// opening the same 4mb quotient filter but leaving the filter on disk
-BenchmarkUnpackedExternalOpen-24                       	  200000        8355 ns/op	     600 B/op	      17 allocs/op
+// loading a 2mb serialized quotient directly from a file (subsequent reads may cause paging / file reads)
+BenchmarkUnpackedExternalOpen-8                      	  134208	      9182 ns/op	     424 B/op	       9 allocs/op
+
 ```
 
 ## Performance - Memory
