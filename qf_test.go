@@ -738,8 +738,9 @@ func BenchmarkUnpackedExternalOpen(b *testing.B) {
 
 	for n := 0; n < b.N; n++ {
 		ext, err := OpenReadOnlyFromPath(name)
-		assert.NoError(b, err)
-		ext.Close()
+		if assert.NoError(b, err) {
+			ext.Close()
+		}
 	}
 }
 

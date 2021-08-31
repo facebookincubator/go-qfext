@@ -39,6 +39,7 @@ func OpenReadOnlyFromPath(path string) (*Disk, error) {
 		return nil, err
 	}
 	var ext Disk
+	ext.f = rdr
 	ext.entries = h.Entries
 	ext.rBits, ext.rMask, ext.size = initForQuotientBits(uint(h.QBits))
 	ext.storageBits = uint(h.StorageBits)
