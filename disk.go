@@ -104,7 +104,7 @@ func (ext *Disk) Contains(v []byte) bool {
 
 // Contains checks whether the string is stored within the quotient filter
 func (ext *Disk) ContainsString(s string) bool {
-	found, _ := ext.Lookup(*(*[]byte)(unsafe.Pointer(&s)))
+	found, _ := ext.Lookup(unsafe.Slice(unsafe.StringData(s), len(s)))
 	return found
 }
 
@@ -135,5 +135,5 @@ func (ext *Disk) Lookup(key []byte) (bool, uint64) {
 
 // LookupString is like Lookup, but for strings
 func (ext *Disk) LookupString(key string) (bool, uint64) {
-	return ext.Lookup(*(*[]byte)(unsafe.Pointer(&key)))
+	return ext.Lookup(unsafe.Slice(unsafe.StringData(key), len(key)))
 }

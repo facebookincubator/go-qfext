@@ -258,7 +258,7 @@ func (qf *Filter) countEntries() (count uint64) {
 // integer value in the quotient filter it returns whether the
 // key was already present in the quotient filter.
 func (qf *Filter) InsertStringWithValue(s string, value uint64) bool {
-	return qf.InsertWithValue(*(*[]byte)(unsafe.Pointer(&s)), value)
+	return qf.InsertWithValue(unsafe.Slice(unsafe.StringData(s), len(s)), value)
 }
 
 // InsertString stores the string key in the quotient filter and
@@ -454,7 +454,7 @@ func (qf *Filter) Contains(v []byte) bool {
 
 // within the quotient filter
 func (qf *Filter) ContainsString(s string) bool {
-	found, _ := qf.Lookup(*(*[]byte)(unsafe.Pointer(&s)))
+	found, _ := qf.Lookup(unsafe.Slice(unsafe.StringData(s), len(s)))
 	return found
 }
 
@@ -502,7 +502,7 @@ func lookupByHash(dq, dr, size uint64, read, storage readFn) (bool, uint64) {
 // LookupString searches for key and returns whether it
 // exists, and the value stored with it (if any)
 func (qf *Filter) LookupString(key string) (bool, uint64) {
-	return qf.Lookup(*(*[]byte)(unsafe.Pointer(&key)))
+	return qf.Lookup(unsafe.Slice(unsafe.StringData(key), len(key)))
 }
 
 func hash(fn HashFn, v []byte, rBits uint, rMask uint64) (q, r uint64) {

@@ -5,7 +5,6 @@ package qf
 import (
 	"encoding/binary"
 	"io"
-	"reflect"
 	"unsafe"
 )
 
@@ -13,20 +12,13 @@ var isLittleEndian bool
 
 func init() {
 	buf := []byte{0x1, 0x0}
-	val := (*uint16)(unsafe.Pointer((*(*reflect.SliceHeader)(unsafe.Pointer(&buf))).Data))
+	val := (*uint16)(unsafe.Pointer(unsafe.SliceData(buf)))
 	isLittleEndian = *val == uint16(1)
 }
 
 func unsafeUint64SliceToBytes(space []uint64) []byte {
-	// Get the slice header
-	header := *(*reflect.SliceHeader)(unsafe.Pointer(&space))
-
-	// The length and capacity of the slice are different.
-	header.Len *= bytesPerWord
-	header.Cap *= bytesPerWord
-
-	// Convert slice header to an []byte
-	return *(*[]byte)(unsafe.Pointer(&header))
+	data := (*byte)(unsafe.Pointer(unsafe.SliceData(space)))
+	return unsafe.Slice(data, len(space)*bytesPerWord)
 }
 
 func writeUintSlice(w io.Writer, v []uint64) (n int64, err error) {
