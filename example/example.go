@@ -3,9 +3,10 @@
 package main
 
 import (
-	qfext ".."
 	"bytes"
 	"fmt"
+
+	qfext "github.com/facebookincubator/go-qfext"
 )
 
 func main() {

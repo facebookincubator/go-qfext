@@ -103,7 +103,7 @@ func main() {
 				Action: func(c *cli.Context) error {
 					filter, err := qf.OpenReadOnlyFromPath(c.String("i"))
 					if err != nil {
-						return fmt.Errorf("can't read input file", err)
+						return fmt.Errorf("lookup: can't read input file: %w", err)
 					}
 					test := strings.Join(c.Args().Slice(), " ")
 					found, ext := filter.LookupString(test)
@@ -128,7 +128,7 @@ func main() {
 				Action: func(c *cli.Context) error {
 					h, err := qf.ReadHeaderFromPath(c.String("i"))
 					if err != nil {
-						return fmt.Errorf("can't read input file", err)
+						return fmt.Errorf("describe: can't read input file: %w", err)
 					}
 					fmt.Printf("Quotient filter version %d\n", h.Version)
 					not := "not "
